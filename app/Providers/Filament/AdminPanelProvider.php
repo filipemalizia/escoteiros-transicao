@@ -27,6 +27,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('painel')
+            ->brandName('Ferramenta de Transição - GEMar Marcílio Dias - 2BA')
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
             ->profile()

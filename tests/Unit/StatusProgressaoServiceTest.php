@@ -174,6 +174,54 @@ it('calcula percentuais e pendencias do programa novo corretamente', function ()
         ->and($pendencias[0]['detalhe'])->toContain('Obrigatórias');
 });
 
+it('pendenciasNovo lista os itens Obrigatórios pendentes e só lista Variáveis pendentes se o mínimo não foi atingido', function () {
+    $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco', 'quantidade_minima_variaveis' => 2]);
+
+    $obrigatoriaPendente = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'OBG-1', 'descricao' => 'Obg pendente', 'tipo_acao' => 'Obrigatória']);
+    $variavel1 = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'VAR-1', 'descricao' => 'Var 1', 'tipo_acao' => 'Variável']);
+    ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'VAR-2', 'descricao' => 'Var 2', 'tipo_acao' => 'Variável']);
+
+    // só 1 de 2 variáveis concluída, obrigatória pendente
+    marcarConcluido($this->jovem, 'novo', $variavel1->id);
+
+    $pendencias = $this->service->pendenciasNovo($this->jovem);
+    expect($pendencias)->toHaveCount(1);
+
+    $pendencia = $pendencias[0];
+    expect(collect($pendencia['obrigatorias_pendentes'])->pluck('codigo')->all())->toBe([$obrigatoriaPendente->codigo])
+        ->and(collect($pendencia['variaveis_pendentes'])->pluck('codigo')->all())->toBe(['VAR-2']);
+});
+
+it('pendenciasNovo nao lista Variáveis pendentes quando o minimo ja foi atingido', function () {
+    $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco', 'quantidade_minima_variaveis' => 1]);
+
+    ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'OBG-1', 'descricao' => 'Obg pendente', 'tipo_acao' => 'Obrigatória']);
+    $variavel1 = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'VAR-1', 'descricao' => 'Var 1', 'tipo_acao' => 'Variável']);
+    ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'VAR-2', 'descricao' => 'Var 2', 'tipo_acao' => 'Variável']);
+
+    // minimo (1) ja atingido via VAR-1, obrigatória ainda pendente
+    marcarConcluido($this->jovem, 'novo', $variavel1->id);
+
+    $pendencias = $this->service->pendenciasNovo($this->jovem);
+    expect($pendencias[0]['variaveis_pendentes'])->toBeEmpty();
+});
+
+it('pendenciasAntigo lista apenas itens nao concluidos', function () {
+    $area = AreaDesenvolvimentoAntiga::create(['ramo_id' => $this->ramo->id, 'nome' => 'Físico']);
+    $competencia = CompetenciaAntiga::create(['area_desenvolvimento_id' => $area->id, 'descricao' => 'Saúde']);
+    $itemConcluido = ItemAntigo::create(['competencia_id' => $competencia->id, 'codigo' => 'FIS-001', 'descricao' => 'Item 1']);
+    $itemPendente = ItemAntigo::create(['competencia_id' => $competencia->id, 'codigo' => 'FIS-002', 'descricao' => 'Item 2']);
+
+    marcarConcluido($this->jovem, 'antigo', $itemConcluido->id);
+
+    $pendencias = $this->service->pendenciasAntigo($this->jovem);
+
+    expect($pendencias)->toHaveCount(1)
+        ->and($pendencias[0]->codigo)->toBe('FIS-002');
+});
+
 it('resumoNovo: variaveis_atingidas soma no maximo a quantidade minima do bloco, nao o total concluido', function () {
     $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
     $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco', 'quantidade_minima_variaveis' => 3]);

@@ -14,11 +14,15 @@ use App\Models\ProgressoNovo;
 use App\Services\EquivalenciaCreditoService;
 use App\Services\EtapaProgressaoService;
 use App\Services\StatusProgressaoService;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\Concerns\InteractsWithRecord;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VerProgresso extends Page
 {
@@ -40,6 +44,39 @@ class VerProgresso extends Page
     protected function authorizeAccess(): void
     {
         abort_unless(static::getResource()::canView($this->getRecord()), 403);
+    }
+
+    /**
+     * @return array<Action>
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('baixarPendenciasPdf')
+                ->label('Baixar Pendências (PDF)')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('gray')
+                ->action(fn () => $this->baixarPendenciasPdf()),
+        ];
+    }
+
+    protected function baixarPendenciasPdf(): StreamedResponse
+    {
+        $jovem = $this->getRecord();
+        $service = app(StatusProgressaoService::class);
+
+        $dados = [
+            'jovem' => $jovem,
+            'resumoAntigo' => $service->resumoAntigo($jovem),
+            'pendenciasAntigo' => $service->pendenciasAntigo($jovem),
+            'resumoNovo' => $service->resumoNovo($jovem),
+            'pendenciasNovo' => $service->pendenciasNovo($jovem),
+        ];
+
+        $pdf = Pdf::loadView('pdf.pendencias', $dados);
+        $nomeArquivo = 'pendencias-'.Str::slug($jovem->nome).'.pdf';
+
+        return response()->streamDownload(fn () => print ($pdf->output()), $nomeArquivo, ['Content-Type' => 'application/pdf']);
     }
 
     public function getTitle(): string|Htmlable

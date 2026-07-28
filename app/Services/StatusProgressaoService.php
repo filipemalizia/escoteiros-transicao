@@ -203,7 +203,7 @@ class StatusProgressaoService
     }
 
     /**
-     * @return array<int, array{bloco: BlocoNovo, status: string, detalhe: string}>
+     * @return array<int, array{bloco: BlocoNovo, status: string, detalhe: string, obrigatorias_pendentes: array<int, ItemNovo>, variaveis_pendentes: array<int, ItemNovo>}>
      */
     public function pendenciasNovo(Jovem $jovem): array
     {
@@ -247,13 +247,49 @@ class StatusProgressaoService
                     $status['obrigatorias_necessarias'],
                 );
 
+            $itemPendente = fn (ItemNovo $item) => ! $this->creditoService->itemNovoConcluido($jovem, $item);
+
+            $obrigatoriasPendentes = $bloco->itens
+                ->where('tipo_acao', 'Obrigatória')
+                ->filter($itemPendente)
+                ->values()
+                ->all();
+
+            // Só lista as Variáveis pendentes se o bloco ainda não atingiu o
+            // mínimo exigido — se já atingiu, itens Variável restantes não
+            // fazem mais falta.
+            $variaveisPendentes = $variaveisSatisfeitas
+                ? []
+                : $bloco->itens
+                    ->where('tipo_acao', 'Variável')
+                    ->filter($itemPendente)
+                    ->values()
+                    ->all();
+
             $pendencias[] = [
                 'bloco' => $bloco,
                 'status' => $status['status'],
                 'detalhe' => implode(', ', $detalhes),
+                'obrigatorias_pendentes' => $obrigatoriasPendentes,
+                'variaveis_pendentes' => $variaveisPendentes,
             ];
         }
 
         return $pendencias;
+    }
+
+    /**
+     * @return array<int, ItemAntigo>
+     */
+    public function pendenciasAntigo(Jovem $jovem): array
+    {
+        $itens = ItemAntigo::query()
+            ->whereHas('competencia.areaDesenvolvimento', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
+            ->get();
+
+        return $itens
+            ->reject(fn (ItemAntigo $item) => $this->creditoService->itemAntigoConcluido($jovem, $item))
+            ->values()
+            ->all();
     }
 }
