@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Models\Ramo;
+use App\Services\EtapaProgressaoService;
 use App\Services\Importacao\ImportadorAntigoService;
 use App\Services\Importacao\ImportadorNovoService;
 use App\Services\Importacao\RawSheetImport;
@@ -12,9 +13,12 @@ use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Schemas\Components\Callout;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Maatwebsite\Excel\Excel as ExcelFormat;
@@ -63,6 +67,49 @@ class ImportarPlanilha extends Page
         ];
     }
 
+    protected static function guiaColunas(?string $sistema, ?int $ramoId): ?HtmlString
+    {
+        if (blank($sistema) || blank($ramoId)) {
+            return null;
+        }
+
+        $ramo = Ramo::find($ramoId);
+
+        if (! $ramo) {
+            return null;
+        }
+
+        if ($sistema === 'antigo') {
+            $linhas = [
+                'Área de Desenvolvimento — <strong>obrigatória</strong>.',
+                'Competência / Descrição da Competência — pelo menos uma das duas é <strong>obrigatória</strong>.',
+                'Código — <strong>obrigatória</strong> (precisa ser único em todo o sistema).',
+                'Item — <strong>obrigatória</strong>.',
+            ];
+
+            $etapas = EtapaProgressaoService::etapasAntigoPorRamo($ramo->nome);
+
+            $linhas[] = filled($etapas)
+                ? 'Etapa — <strong>obrigatória</strong> para o ramo '.$ramo->nome.'. Valores aceitos: '.implode(', ', $etapas).'.'
+                : 'Etapa — não se aplica ao ramo '.$ramo->nome.' (pode deixar em branco).';
+
+            $linhas[] = 'Observação/Requisito — opcional.';
+        } else {
+            $linhas = [
+                'Eixo — <strong>obrigatória</strong>.',
+                'Bloco — <strong>obrigatória</strong>.',
+                'Código — <strong>obrigatória</strong> (precisa ser único em todo o sistema).',
+                'Tipo de Ação — <strong>obrigatória</strong>. Valores aceitos: Obrigatória, Variável, Substitutiva.',
+                'Ação — <strong>obrigatória</strong>.',
+                'Intencionalidade Educativa — opcional.',
+                'Modalid. — opcional (padrão: Geral).',
+                'Requisitos/Realizar — opcional.',
+            ];
+        }
+
+        return new HtmlString('• '.implode('<br>• ', $linhas));
+    }
+
     /**
      * @param  array<string, string>  $colunas
      */
@@ -87,11 +134,17 @@ class ImportarPlanilha extends Page
                         'antigo' => 'Antigo',
                         'novo' => 'Novo',
                     ])
+                    ->live()
                     ->required(),
                 Select::make('ramo_id')
                     ->label('Ramo')
                     ->options(fn () => Ramo::pluck('nome', 'id'))
+                    ->live()
                     ->required(),
+                Callout::make('Colunas esperadas na planilha')
+                    ->info()
+                    ->description(fn (Get $get) => static::guiaColunas($get('sistema'), $get('ramo_id')))
+                    ->visible(fn (Get $get) => filled($get('sistema')) && filled($get('ramo_id'))),
                 FileUpload::make('arquivo')
                     ->label('Planilha (.xlsx ou .csv)')
                     ->acceptedFileTypes([
@@ -141,10 +194,21 @@ class ImportarPlanilha extends Page
         $resumo = $servico->importar($rawImport->linhas ?? collect(), $ramo);
         $this->resumo = $resumo->toArray();
 
-        Notification::make()
-            ->title('Importação concluída')
-            ->body("{$resumo->itensCriados} itens criados, {$resumo->itensIgnorados} ignorados.")
-            ->success()
-            ->send();
+        $notification = Notification::make()
+            ->body("{$resumo->itensCriados} itens criados, {$resumo->itensIgnorados} ignorados.");
+
+        match (true) {
+            $resumo->itensCriados === 0 && $resumo->itensIgnorados > 0 => $notification
+                ->title('Nenhum item foi importado')
+                ->danger(),
+            $resumo->itensIgnorados > 0 => $notification
+                ->title('Importação concluída com pendências — confira as linhas ignoradas abaixo')
+                ->warning(),
+            default => $notification
+                ->title('Importação concluída')
+                ->success(),
+        };
+
+        $notification->send();
     }
 }
