@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\Jovems\Tables;
+namespace App\Filament\Resources\Jovens\Tables;
 
 use App\Models\Ramo;
 use Filament\Actions\BulkActionGroup;
@@ -11,7 +11,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
-class JovemsTable
+class JovensTable
 {
     public static function configure(Table $table): Table
     {
