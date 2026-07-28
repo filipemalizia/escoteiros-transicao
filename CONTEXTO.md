@@ -143,29 +143,53 @@ a etapa Cidadania e a Insígnia BP final).
 
 ## Pendências conhecidas (ainda não resolvidas)
 
-1. **Cadastro de Equivalência é 1-para-1 por linha** — criar um N-1/1-N
-   exige cadastrar várias linhas manualmente. Melhoria solicitada: tela de
-   criação em lote (1 item de um lado + múltiplos do outro).
-2. **Enum `'sem_equivalencia'`** em `tipo_equivalencia` não tem uso real
-   claro, já que a tabela exige os dois FKs preenchidos — a ausência de
-   qualquer linha já significa "sem equivalência" na lógica de crédito.
-   Considerar remover esse valor do enum, a menos que se decida permitir
-   FKs nulos para documentar explicitamente itens sem par.
-3. **Corte de 10% na etapa "Comprometimento" do Pioneiro (antigo)** — a
+1. **Corte de 10% na etapa "Comprometimento" do Pioneiro (antigo)** — a
    tabela original de cortes listava um corte em 10% separado do de 50%
    ("Cidadania"), mas a regra especial detalhada só menciona o de 50%. Foi
    implementado tratando tudo abaixo de 50% como "Comprometimento" (sem
    distinguir um estágio intermediário nos 10%). Confirmar se está correto
    ou se falta um nome de etapa entre 10% e 50%.
-4. **Contadores de resumo mais claros** solicitados: total concluído/faltante
-   no antigo, e no novo considerando obrigatórias + mínimo de variáveis por
-   bloco (não itens variáveis excedentes).
-5. Importação de dados reais de Lobinho, Escoteiro e Pioneiro (antigo, novo
+2. Importação de dados reais de Lobinho, Escoteiro e Pioneiro (antigo, novo
    e equivalência) ainda não feita — só o Ramo Sênior tem dados completos
-   importados até o momento.
+   importados até o momento. Modelos de planilha (.csv) disponíveis via
+   botão na tela "Importar Planilha".
 
-## Resolvido nesta sessão (não é mais pendência)
+## Resolvido (não é mais pendência)
 
 - Nome do Reconhecimento do Pioneiro (novo): confirmado como **"Insígnia de
   B-P"**, não "Escoteiro da Pátria" (que era um possível erro de
   transcrição do documento de origem).
+- Cadastro de Equivalência em lote (1-1/N-1/1-N), enum `tipo_equivalencia`
+  sem o valor `sem_equivalencia`, contadores de resumo (antigo e novo) na
+  tela de Progresso, badge de etapa por item (Lobinho/Escoteiro), edição de
+  Requisitos Complementares direto na tela de Progresso, coluna `etapa`
+  agora capturada e validada na importação do programa antigo,
+  CRUD de Usuários + edição do próprio perfil (`->profile()` do Filament).
+
+## Deploy
+
+- Hostinger (Git auto-deploy no hPanel): a cada push na branch observada,
+  a Hostinger dá `git pull` e roda um script de pós-deploy configurado no
+  próprio hPanel (Websites → Avançado → Git → Deployment script).
+- **Limitação importante**: o SSH da Hostinger só tem PHP + Composer, não
+  tem Node/npm. Por isso o build do Vite (CSS/JS, incluindo o tema
+  Filament) não pode rodar lá.
+- Solução adotada: workflow `.github/workflows/deploy-assets.yml` builda os
+  assets no GitHub Actions (a cada push em `main`) e publica o resultado
+  numa branch `deploy` (force-push, com `public/build` incluído mesmo
+  estando no `.gitignore`). **A Hostinger deve observar a branch `deploy`**,
+  não a `main`, no Git do hPanel.
+- Script de pós-deploy sugerido pra colar no hPanel (`deploy/hostinger-post-deploy.sh`
+  neste repo, mantido só como referência/documentação — cole o conteúdo no
+  campo do hPanel):
+  ```
+  composer install --no-dev --optimize-autoloader
+  php artisan migrate --force
+  php artisan config:clear
+  php artisan config:cache
+  php artisan route:cache
+  php artisan view:cache
+  php artisan storage:link
+  ```
+- Cuidado: `migrate --force` roda sem confirmação a cada push na branch
+  `deploy` — revisar migrations antes de mergear pra lá.
