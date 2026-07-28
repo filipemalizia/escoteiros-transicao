@@ -112,6 +112,11 @@
                                                 />
                                                 <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
                                                     <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ $item->codigo }}</span>
+                                                    @if ($item->etapa)
+                                                        <x-filament::badge color="primary" size="sm">
+                                                            {{ $item->etapa }}
+                                                        </x-filament::badge>
+                                                    @endif
                                                     <span>{{ $item->descricao }}</span>
                                                     @if ($concluidoGeral && ! $marcadoDireto)
                                                         <x-filament::badge color="info" size="sm" icon="heroicon-o-link">
