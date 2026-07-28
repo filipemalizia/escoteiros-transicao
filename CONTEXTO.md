@@ -168,28 +168,20 @@ a etapa Cidadania e a Insígnia BP final).
 
 ## Deploy
 
-- Hostinger (Git auto-deploy no hPanel): a cada push na branch observada,
-  a Hostinger dá `git pull` e roda um script de pós-deploy configurado no
-  próprio hPanel (Websites → Avançado → Git → Deployment script).
-- **Limitação importante**: o SSH da Hostinger só tem PHP + Composer, não
-  tem Node/npm. Por isso o build do Vite (CSS/JS, incluindo o tema
-  Filament) não pode rodar lá.
-- Solução adotada: workflow `.github/workflows/deploy-assets.yml` builda os
-  assets no GitHub Actions (a cada push em `main`) e publica o resultado
-  numa branch `deploy` (force-push, com `public/build` incluído mesmo
-  estando no `.gitignore`). **A Hostinger deve observar a branch `deploy`**,
-  não a `main`, no Git do hPanel.
-- Script de pós-deploy sugerido pra colar no hPanel (`deploy/hostinger-post-deploy.sh`
-  neste repo, mantido só como referência/documentação — cole o conteúdo no
-  campo do hPanel):
-  ```
-  composer install --no-dev --optimize-autoloader
-  php artisan migrate --force
-  php artisan config:clear
-  php artisan config:cache
-  php artisan route:cache
-  php artisan view:cache
-  php artisan storage:link
-  ```
-- Cuidado: `migrate --force` roda sem confirmação a cada push na branch
-  `deploy` — revisar migrations antes de mergear pra lá.
+- **Código PHP**: Hostinger (Git auto-deploy no hPanel, observando a branch
+  `main`) — a cada push, a Hostinger dá `git pull` e roda o script de
+  pós-deploy configurado no próprio hPanel (Websites → Avançado → Git →
+  Deployment script), com o conteúdo de `deploy/hostinger-post-deploy.sh`
+  (composer install, migrate --force, cache clear/cache, storage:link).
+- **Assets do Vite (`public/build`)**: a Hostinger não tem Node/npm no SSH,
+  então o build não roda lá. Fica separado do fluxo de git: o workflow
+  `.github/workflows/deploy-assets.yml` builda os assets no GitHub Actions
+  (a cada push em `main`) e envia só a pasta `public/build` direto pro
+  servidor via `rsync` sobre SSH (porta 65002, usuário `u569700691`,
+  host `89.116.115.13`), usando uma chave dedicada guardada nos Secrets do
+  repositório (`HOSTINGER_SSH_KEY`, `HOSTINGER_SSH_HOST`,
+  `HOSTINGER_SSH_PORT`, `HOSTINGER_SSH_USER`, `HOSTINGER_DEPLOY_PATH`).
+  `public/build` continua fora do git (`.gitignore`) — nunca é commitado.
+- Servidor: `/home/u569700691/domains/transicao.marciliodias.org.br/public_html/`.
+- Cuidado: `migrate --force` roda sem confirmação a cada push na `main` —
+  revisar migrations antes de mergear pra lá.
