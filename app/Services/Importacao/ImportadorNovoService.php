@@ -35,6 +35,13 @@ class ImportadorNovoService
         }
 
         $cabecalho = $this->mapearCabecalho($linhas->first(), self::COLUNAS);
+
+        if (! $this->cabecalhoTemColunasEssenciais($cabecalho, ['eixo', 'bloco', 'codigo', 'acao'])) {
+            $resumo->registrarErro(1, 'Não foi possível reconhecer as colunas da planilha (verifique "Eixo", "Bloco", "Código" e "Ação"). Confira se os nomes das colunas batem exatamente com os do modelo baixado nesta tela.');
+
+            return $resumo;
+        }
+
         $linhasDeDados = $linhas->slice(1);
 
         DB::transaction(function () use ($linhasDeDados, $cabecalho, $ramo, $resumo) {
