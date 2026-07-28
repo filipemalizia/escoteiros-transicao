@@ -4,6 +4,7 @@ use App\Models\AreaDesenvolvimentoAntiga;
 use App\Models\BlocoNovo;
 use App\Models\CompetenciaAntiga;
 use App\Models\EixoNovo;
+use App\Models\EquivalenciaBloco;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\Jovem;
@@ -81,6 +82,35 @@ it('marca bloco como Concluído quando obrigatorias ok e variaveis suficientes',
     expect($status['status'])->toBe('Concluído')
         ->and($status['variaveis_concluidas'])->toBe(2)
         ->and($status['variaveis_necessarias'])->toBe(2);
+});
+
+it('conta itens do programa antigo vinculados via EquivalenciaBloco como Ação Variável do bloco', function () {
+    $area = AreaDesenvolvimentoAntiga::create(['ramo_id' => $this->ramo->id, 'nome' => 'Intelectual']);
+    $competencia = CompetenciaAntiga::create(['area_desenvolvimento_id' => $area->id, 'descricao' => 'Aprendizagem']);
+    $itemAntigo1 = ItemAntigo::create(['competencia_id' => $competencia->id, 'codigo' => 'I33', 'descricao' => 'Item antigo 1']);
+    $itemAntigo2 = ItemAntigo::create(['competencia_id' => $competencia->id, 'codigo' => 'I35', 'descricao' => 'Item antigo 2']);
+
+    $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Aprendizagem Contínua', 'quantidade_minima_variaveis' => 3]);
+    $obrigatoria = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-001', 'descricao' => 'Obg', 'tipo_acao' => 'Obrigatória']);
+    ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-002', 'descricao' => 'Var 1', 'tipo_acao' => 'Variável']);
+
+    EquivalenciaBloco::create(['item_antigo_id' => $itemAntigo1->id, 'bloco_novo_id' => $bloco->id]);
+    EquivalenciaBloco::create(['item_antigo_id' => $itemAntigo2->id, 'bloco_novo_id' => $bloco->id]);
+
+    marcarConcluido($this->jovem, 'novo', $obrigatoria->id);
+    marcarConcluido($this->jovem, 'antigo', $itemAntigo1->id);
+
+    $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
+    expect($status['variaveis_concluidas'])->toBe(1)
+        ->and($status['variaveis_concluidas_via_bloco'])->toBe(1)
+        ->and($status['status'])->toBe('Parcial');
+
+    marcarConcluido($this->jovem, 'antigo', $itemAntigo2->id);
+
+    $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
+    expect($status['variaveis_concluidas'])->toBe(2)
+        ->and($status['variaveis_concluidas_via_bloco'])->toBe(2);
 });
 
 it('marca bloco como Concluído via Substitutiva mesmo com poucas variaveis', function () {

@@ -62,6 +62,23 @@ equivalencias                  — id, item_antigo_id (FK itens_antigos),
                                   observacao
                                   [ver "Pendência conhecida" sobre 'sem_equivalencia']
 
+equivalencia_blocos            — id, item_antigo_id (FK itens_antigos),
+                                  bloco_novo_id (FK blocos_novos), observacao
+                                  Crédito de item antigo direto pro BLOCO (não
+                                  pra um item novo específico) — usado quando o
+                                  documento oficial lista "atividades do
+                                  programa anterior que complementam as
+                                  atividades variáveis" de um bloco, sem
+                                  correspondência 1-a-1 com nenhum item novo.
+                                  Cada item antigo vinculado e concluído soma
+                                  +1 na cota de Ações Variáveis do bloco
+                                  (`StatusProgressaoService::statusBloco()`).
+                                  Cadastro em lote na tela "Equivalência de
+                                  Bloco em Lote". Cuidado: não vincular o
+                                  mesmo item antigo aqui E como equivalência
+                                  item-a-item pro mesmo bloco — contaria em
+                                  dobro.
+
 -- Progresso do jovem --
 progresso_antigo               — id, jovem_id, item_antigo_id, concluido,
                                   data_conclusao, registrado_por_id

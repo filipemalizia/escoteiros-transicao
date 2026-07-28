@@ -41,7 +41,7 @@ class StatusProgressaoService
     }
 
     /**
-     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, substitutiva_concluida: bool}
+     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, substitutiva_concluida: bool}
      */
     public function statusBloco(Jovem $jovem, BlocoNovo $bloco): array
     {
@@ -58,6 +58,20 @@ class StatusProgressaoService
 
         $variaveisNecessarias = $bloco->quantidade_minima_variaveis ?? 0;
         $variaveisConcluidas = $variaveis->filter($itemConcluido)->count();
+
+        /**
+         * Crédito de bloco: itens do programa antigo que, sozinhos, contam
+         * como uma Ação Variável do bloco (sem corresponder a nenhum item
+         * novo específico) — ex.: "atividades do programa anterior que
+         * podem complementar as atividades variáveis" no documento oficial.
+         */
+        $variaveisConcluidasViaBloco = $bloco->equivalenciasBloco
+            ->pluck('itemAntigo')
+            ->filter()
+            ->filter(fn (ItemAntigo $item) => $this->creditoService->itemAntigoConcluido($jovem, $item))
+            ->count();
+
+        $variaveisConcluidas += $variaveisConcluidasViaBloco;
 
         $substitutivaConcluida = $substitutivas->contains($itemConcluido);
 
@@ -79,6 +93,7 @@ class StatusProgressaoService
             'obrigatorias_concluidas' => $obrigatoriasConcluidas,
             'variaveis_necessarias' => $variaveisNecessarias,
             'variaveis_concluidas' => $variaveisConcluidas,
+            'variaveis_concluidas_via_bloco' => $variaveisConcluidasViaBloco,
             'substitutiva_concluida' => $substitutivaConcluida,
         ];
     }

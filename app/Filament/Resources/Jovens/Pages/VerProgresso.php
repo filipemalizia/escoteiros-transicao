@@ -60,7 +60,7 @@ class VerProgresso extends Page
     {
         return EixoNovo::query()
             ->where('ramo_id', $this->getRecord()->ramo_atual_id)
-            ->with('blocos.itens.especialidade')
+            ->with(['blocos.itens.especialidade', 'blocos.equivalenciasBloco.itemAntigo'])
             ->orderBy('nome')
             ->get();
     }

@@ -239,6 +239,39 @@
                                         </li>
                                     @endforeach
                                 </ul>
+
+                                @if ($bloco->equivalenciasBloco->isNotEmpty())
+                                    <div class="mt-3 rounded-lg bg-gray-50 p-3 dark:bg-white/5">
+                                        <div class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                            Itens do Programa Antigo que também contam como Ação Variável deste bloco
+                                            ({{ $statusBloco['variaveis_concluidas_via_bloco'] }} concluído(s))
+                                        </div>
+                                        <ul class="space-y-1">
+                                            @foreach ($bloco->equivalenciasBloco as $equivalenciaBloco)
+                                                @php
+                                                    $itemAntigoVinculado = $equivalenciaBloco->itemAntigo;
+                                                    $concluidoViaBloco = $itemAntigoVinculado && $this->itemAntigoConcluido($itemAntigoVinculado);
+                                                @endphp
+                                                @if ($itemAntigoVinculado)
+                                                    <li wire:key="equivalencia-bloco-{{ $equivalenciaBloco->id }}-{{ $concluidoViaBloco ? 1 : 0 }}">
+                                                        <label class="-mx-3 flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10">
+                                                            <input
+                                                                type="checkbox"
+                                                                wire:click="toggleAntigo({{ $itemAntigoVinculado->id }})"
+                                                                @checked($concluidoViaBloco)
+                                                                class="mt-0.5 h-6 w-6 shrink-0 rounded border-gray-300 accent-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-1 dark:border-gray-600 dark:focus:ring-offset-gray-900"
+                                                            />
+                                                            <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
+                                                                <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ $itemAntigoVinculado->codigo }}</span>
+                                                                <span>{{ $itemAntigoVinculado->descricao }}</span>
+                                                            </span>
+                                                        </label>
+                                                    </li>
+                                                @endif
+                                            @endforeach
+                                        </ul>
+                                    </div>
+                                @endif
                             </div>
                         @endforeach
                     </div>
