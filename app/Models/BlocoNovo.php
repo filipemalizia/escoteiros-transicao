@@ -21,4 +21,9 @@ class BlocoNovo extends Model
     {
         return $this->hasMany(ItemNovo::class, 'bloco_id');
     }
+
+    public function equivalenciasBloco(): HasMany
+    {
+        return $this->hasMany(EquivalenciaBloco::class, 'bloco_novo_id');
+    }
 }
