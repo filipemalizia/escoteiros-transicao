@@ -55,13 +55,20 @@ class RawSheetImport implements ToCollection, WithCustomCsvSettings
             return 'UTF-8';
         }
 
-        $amostra = file_get_contents($this->caminhoArquivo, length: 8192);
+        $conteudo = file_get_contents($this->caminhoArquivo);
 
-        if ($amostra === false || $amostra === '') {
+        if ($conteudo === false || $conteudo === '') {
             return 'UTF-8';
         }
 
-        $detectado = mb_detect_encoding($amostra, ['UTF-8', 'Windows-1252', 'ISO-8859-1'], true);
+        // Verifica validade de UTF-8 primeiro (determinístico) antes de usar
+        // mb_detect_encoding (heurística, que erra fácil com Windows-1252 em
+        // conteúdo que na verdade é UTF-8 válido — já vimos isso na prática).
+        if (mb_check_encoding($conteudo, 'UTF-8')) {
+            return 'UTF-8';
+        }
+
+        $detectado = mb_detect_encoding($conteudo, ['Windows-1252', 'ISO-8859-1'], true);
 
         return $detectado ?: 'UTF-8';
     }

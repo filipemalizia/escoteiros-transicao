@@ -77,3 +77,48 @@ it('nao exige etapa para ramos que nao usam esse conceito (Sênior/Pioneiro)', f
         ->and($resumo->itensIgnorados)->toBe(0)
         ->and(ItemAntigo::where('codigo', 'FIS-004')->first()->etapa)->toBeNull();
 });
+
+it('reconhece o cabecalho mesmo com BOM UTF-8 na primeira celula (exportação do Google Planilhas)', function () {
+    $ramo = Ramo::create(['nome' => 'Sênior']);
+
+    $linhas = collect([
+        collect(["\xEF\xBB\xBFÁrea de Desenvolvimento", 'Competência', 'Descrição da Competência', 'Código', 'Item', 'Etapa', 'Observação/Requisito']),
+        collect(['Físico', 'Saúde', '', 'FIS-007', 'Item 1', '', '']),
+    ]);
+
+    $resumo = $this->service->importar($linhas, $ramo);
+
+    expect($resumo->itensCriados)->toBe(1)
+        ->and($resumo->itensIgnorados)->toBe(0);
+});
+
+it('reconhece o cabecalho mesmo com espaço não separável entre palavras (comum em textos colados do Google)', function () {
+    $ramo = Ramo::create(['nome' => 'Sênior']);
+
+    $linhas = collect([
+        collect(["Área de\u{00A0}Desenvolvimento", 'Competência', 'Descrição da Competência', 'Código', 'Item', 'Etapa', 'Observação/Requisito']),
+        collect(['Físico', 'Saúde', '', 'FIS-008', 'Item 1', '', '']),
+    ]);
+
+    $resumo = $this->service->importar($linhas, $ramo);
+
+    expect($resumo->itensCriados)->toBe(1)
+        ->and($resumo->itensIgnorados)->toBe(0);
+});
+
+it('para com um unico erro claro quando o cabecalho da planilha nao e reconhecido, em vez de repetir o erro em cada linha', function () {
+    $ramo = Ramo::create(['nome' => 'Sênior']);
+
+    $linhas = collect([
+        collect(['Area', 'Competencia', 'Descricao', 'Cod', 'Descricao do Item', 'Etapa', 'Obs']),
+        collect(['Físico', 'Saúde', '', 'FIS-005', 'Item 1', '', '']),
+        collect(['Físico', 'Saúde', '', 'FIS-006', 'Item 2', '', '']),
+    ]);
+
+    $resumo = $this->service->importar($linhas, $ramo);
+
+    expect($resumo->itensCriados)->toBe(0)
+        ->and($resumo->itensIgnorados)->toBe(1)
+        ->and($resumo->erros)->toHaveCount(1)
+        ->and($resumo->erros[0]['motivo'])->toContain('reconhecer as colunas');
+});
