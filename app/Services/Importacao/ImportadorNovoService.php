@@ -15,7 +15,7 @@ class ImportadorNovoService
 {
     use LeitorPlanilha;
 
-    protected const COLUNAS = [
+    public const COLUNAS = [
         'eixo' => 'Eixo',
         'bloco' => 'Bloco',
         'intencionalidade' => 'Intencionalidade Educativa',

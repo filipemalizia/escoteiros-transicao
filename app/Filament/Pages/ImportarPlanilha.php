@@ -7,6 +7,7 @@ use App\Services\Importacao\ImportadorAntigoService;
 use App\Services\Importacao\ImportadorNovoService;
 use App\Services\Importacao\RawSheetImport;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
@@ -18,6 +19,7 @@ use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Maatwebsite\Excel\Excel as ExcelFormat;
 use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class ImportarPlanilha extends Page
@@ -39,6 +41,39 @@ class ImportarPlanilha extends Page
     public function mount(): void
     {
         $this->form->fill();
+    }
+
+    /**
+     * @return array<Action>
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('baixarModeloAntigo')
+                ->label('Modelo Antigo (.csv)')
+                ->icon(Heroicon::OutlinedDocumentArrowDown)
+                ->color('gray')
+                ->action(fn () => $this->baixarModelo('modelo-importacao-antigo.csv', ImportadorAntigoService::COLUNAS)),
+
+            Action::make('baixarModeloNovo')
+                ->label('Modelo Novo (.csv)')
+                ->icon(Heroicon::OutlinedDocumentArrowDown)
+                ->color('gray')
+                ->action(fn () => $this->baixarModelo('modelo-importacao-novo.csv', ImportadorNovoService::COLUNAS)),
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $colunas
+     */
+    protected function baixarModelo(string $nomeArquivo, array $colunas): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($colunas) {
+            $handle = fopen('php://output', 'w');
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, array_values($colunas), ';');
+            fclose($handle);
+        }, $nomeArquivo, ['Content-Type' => 'text/csv']);
     }
 
     public function form(Schema $schema): Schema

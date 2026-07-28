@@ -60,6 +60,17 @@ class EtapaProgressaoService
         return self::NOMES_RECONHECIMENTO[$sistema][$ramo->nome] ?? 'Reconhecimento';
     }
 
+    /**
+     * Etapas válidas (em ordem) do programa antigo por item, para o ramo informado.
+     * Vazio para ramos que não usam esse conceito (Sênior/Pioneiro).
+     *
+     * @return array<int, string>
+     */
+    public static function etapasAntigoPorRamo(string $ramoNome): array
+    {
+        return self::ETAPAS_ANTIGO_POR_ITEM[$ramoNome] ?? [];
+    }
+
     // ------------------------------------------------------------------
     // Catálogo de chaves complementares (usado pelo form, pela elegibilidade
     // e pela lista de pendências — fonte única de verdade)

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\CompetenciaAntigas\RelationManagers;
 
+use App\Services\EtapaProgressaoService;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -19,11 +20,6 @@ class ItensRelationManager extends RelationManager
 {
     protected static string $relationship = 'itens';
 
-    protected const ETAPAS_POR_RAMO = [
-        'Lobinho' => ['Pata Tenra', 'Saltador', 'Rastreador', 'Caçador'],
-        'Escoteiro' => ['Pista', 'Trilha', 'Rumo', 'Travessia'],
-    ];
-
     protected function ramoDaCompetencia(): string
     {
         return $this->getOwnerRecord()->areaDesenvolvimento->ramo->nome;
@@ -39,11 +35,11 @@ class ItensRelationManager extends RelationManager
                     ->maxLength(255),
                 Select::make('etapa')
                     ->options(fn () => array_combine(
-                        self::ETAPAS_POR_RAMO[$this->ramoDaCompetencia()] ?? [],
-                        self::ETAPAS_POR_RAMO[$this->ramoDaCompetencia()] ?? [],
+                        $etapas = EtapaProgressaoService::etapasAntigoPorRamo($this->ramoDaCompetencia()),
+                        $etapas,
                     ))
-                    ->visible(fn () => array_key_exists($this->ramoDaCompetencia(), self::ETAPAS_POR_RAMO))
-                    ->required(fn () => array_key_exists($this->ramoDaCompetencia(), self::ETAPAS_POR_RAMO)),
+                    ->visible(fn () => filled(EtapaProgressaoService::etapasAntigoPorRamo($this->ramoDaCompetencia())))
+                    ->required(fn () => filled(EtapaProgressaoService::etapasAntigoPorRamo($this->ramoDaCompetencia()))),
                 Textarea::make('descricao')
                     ->required()
                     ->columnSpanFull(),
@@ -58,7 +54,7 @@ class ItensRelationManager extends RelationManager
                 TextColumn::make('codigo')
                     ->searchable(),
                 TextColumn::make('etapa')
-                    ->visible(fn () => array_key_exists($this->ramoDaCompetencia(), self::ETAPAS_POR_RAMO)),
+                    ->visible(fn () => filled(EtapaProgressaoService::etapasAntigoPorRamo($this->ramoDaCompetencia()))),
                 TextColumn::make('descricao')
                     ->limit(60),
             ])
