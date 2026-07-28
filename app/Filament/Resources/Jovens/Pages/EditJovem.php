@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Filament\Resources\Jovems\Pages;
+namespace App\Filament\Resources\Jovens\Pages;
 
-use App\Filament\Resources\Jovems\JovemResource;
+use App\Filament\Resources\Jovens\JovemResource;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
