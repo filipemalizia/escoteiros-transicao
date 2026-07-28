@@ -6,6 +6,7 @@ use App\Models\AreaDesenvolvimentoAntiga;
 use App\Models\CompetenciaAntiga;
 use App\Models\ItemAntigo;
 use App\Models\Ramo;
+use App\Services\EtapaProgressaoService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -13,12 +14,13 @@ class ImportadorAntigoService
 {
     use LeitorPlanilha;
 
-    protected const COLUNAS = [
+    public const COLUNAS = [
         'area' => 'Área de Desenvolvimento',
         'competencia' => 'Competência',
         'descricao_competencia' => 'Descrição da Competência',
         'codigo' => 'Código',
         'item' => 'Item',
+        'etapa' => 'Etapa',
         'observacao' => 'Observação/Requisito',
     ];
 
@@ -80,8 +82,25 @@ class ImportadorAntigoService
         $observacao = $this->valor($linha, $cabecalho, 'observacao');
         $descricaoItem = filled($observacao) ? "{$item}\n\nObservação: {$observacao}" : $item;
 
+        $etapasValidas = EtapaProgressaoService::etapasAntigoPorRamo($ramo->nome);
+        $etapa = $this->valor($linha, $cabecalho, 'etapa');
+
+        if (filled($etapasValidas)) {
+            if (blank($etapa)) {
+                $resumo->registrarErro($numeroLinha, 'Etapa em branco (obrigatória para este ramo).');
+
+                return;
+            }
+
+            if (! in_array($etapa, $etapasValidas, true)) {
+                $resumo->registrarErro($numeroLinha, "Etapa '{$etapa}' não reconhecida para o ramo {$ramo->nome}.");
+
+                return;
+            }
+        }
+
         try {
-            DB::transaction(function () use ($areaNome, $descricaoFinal, $codigo, $descricaoItem, $ramo, $resumo) {
+            DB::transaction(function () use ($areaNome, $descricaoFinal, $codigo, $descricaoItem, $etapa, $ramo, $resumo) {
                 $area = AreaDesenvolvimentoAntiga::firstOrCreate([
                     'ramo_id' => $ramo->id,
                     'nome' => $areaNome,
@@ -108,6 +127,7 @@ class ImportadorAntigoService
                     'competencia_id' => $competencia->id,
                     'codigo' => $codigo,
                     'descricao' => $descricaoItem,
+                    'etapa' => $etapa,
                 ]);
 
                 $resumo->itensCriados++;
