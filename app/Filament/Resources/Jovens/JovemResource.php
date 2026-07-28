@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Jovens;
 use App\Filament\Resources\Jovens\Pages\CreateJovem;
 use App\Filament\Resources\Jovens\Pages\EditJovem;
 use App\Filament\Resources\Jovens\Pages\ListJovens;
+use App\Filament\Resources\Jovens\Pages\VerProgresso;
 use App\Filament\Resources\Jovens\Schemas\JovemForm;
 use App\Filament\Resources\Jovens\Tables\JovensTable;
 use App\Models\Jovem;
@@ -49,6 +50,7 @@ class JovemResource extends Resource
             'index' => ListJovens::route('/'),
             'create' => CreateJovem::route('/create'),
             'edit' => EditJovem::route('/{record}/edit'),
+            'progresso' => VerProgresso::route('/{record}/progresso'),
         ];
     }
 }

@@ -14,7 +14,9 @@ use Filament\Pages\Page;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Maatwebsite\Excel\Excel as ExcelFormat;
 use Maatwebsite\Excel\Facades\Excel;
 use Throwable;
 
@@ -56,9 +58,13 @@ class ImportarPlanilha extends Page
                     ->options(fn () => Ramo::pluck('nome', 'id'))
                     ->required(),
                 FileUpload::make('arquivo')
-                    ->label('Planilha (.xlsx)')
+                    ->label('Planilha (.xlsx ou .csv)')
                     ->acceptedFileTypes([
                         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        'text/csv',
+                        'text/plain',
+                        'application/csv',
+                        'application/vnd.ms-excel',
                     ])
                     ->storeFiles(false)
                     ->required(),
@@ -74,15 +80,19 @@ class ImportarPlanilha extends Page
         /** @var TemporaryUploadedFile $arquivo */
         $arquivo = $data['arquivo'];
 
+        $extensao = Str::lower($arquivo->getClientOriginalExtension());
+        $tipoLeitor = $extensao === 'csv' ? ExcelFormat::CSV : ExcelFormat::XLSX;
+
         $rawImport = new RawSheetImport;
+        $rawImport->setCaminhoArquivo($arquivo->getRealPath());
 
         try {
-            Excel::import($rawImport, $arquivo->getRealPath());
+            Excel::import($rawImport, $arquivo->getRealPath(), null, $tipoLeitor);
         } catch (Throwable $e) {
             Log::error('Falha ao ler planilha de importação', ['erro' => $e->getMessage()]);
 
             Notification::make()
-                ->title('Não foi possível ler o arquivo. Confirme que é um .xlsx válido.')
+                ->title('Não foi possível ler o arquivo. Confirme que é um .xlsx ou .csv válido.')
                 ->danger()
                 ->send();
 

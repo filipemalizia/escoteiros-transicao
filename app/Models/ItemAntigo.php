@@ -9,7 +9,7 @@ class ItemAntigo extends Model
 {
     protected $table = 'itens_antigos';
 
-    protected $fillable = ['competencia_id', 'codigo', 'descricao'];
+    protected $fillable = ['competencia_id', 'codigo', 'descricao', 'etapa'];
 
     public function competencia(): BelongsTo
     {
