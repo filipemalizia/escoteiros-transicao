@@ -1,0 +1,45 @@
+name: Build e enviar assets pra Hostinger via SSH
+
+# A Hostinger não tem Node/npm disponível no SSH (só PHP + Composer), então
+# o build do Vite (CSS/JS, incluindo o tema Filament) não pode rodar lá.
+# Este workflow builda os assets aqui no GitHub (que tem Node) e envia só a
+# pasta public/build direto pro servidor via rsync sobre SSH, sem passar
+# pelo git — public/build continua fora do repositório (.gitignore).
+#
+# O deploy do código PHP em si continua normalmente pelo Git da própria
+# Hostinger (hPanel > Git), que roda o script em deploy/hostinger-post-deploy.sh
+# depois de cada "git pull".
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências do frontend
+        run: npm ci
+
+      - name: Buildar assets (Vite)
+        run: npm run build
+
+      - name: Configurar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.HOSTINGER_SSH_PORT }}" "${{ secrets.HOSTINGER_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Enviar public/build pro servidor via rsync
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.HOSTINGER_SSH_PORT }}" \
+            public/build/ \
+            "${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}:${{ secrets.HOSTINGER_DEPLOY_PATH }}"
