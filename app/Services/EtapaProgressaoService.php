@@ -14,11 +14,30 @@ class EtapaProgressaoService
     ) {}
 
     /**
-     * Etapas do programa antigo baseadas na coluna `etapa` de cada item (Lobinho/Escoteiro).
+     * Itens do programa antigo, por ramo, são agrupados em "piscinas" (coluna
+     * `etapa` grava o nome da piscina, não da etapa individual) — cada
+     * piscina reúne os itens de 2 etapas seguidas, indiferentes entre si.
+     * Atingir metade da piscina = 1ª etapa; 100% = 2ª etapa. As piscinas são
+     * independentes entre si (não é preciso terminar a 1ª pra progredir na
+     * 2ª), mas a "etapa atual" exibida ainda percorre as piscinas na ordem
+     * abaixo e mostra a primeira que não estiver 100% concluída.
+     *
+     * No Lobinho, a 1ª piscina tem um "Período Introdutório": um subconjunto
+     * fixo de itens marcados como `introdutorio = true` que precisa estar
+     * 100% concluído (não uma fração qualquer) pra valer a 1ª etapa (Pata
+     * Tenra). As demais piscinas usam só a fração de 50%/100%.
+     *
+     * @return array<int, array{pool: string, meio: string, cheio: string, usa_introdutorio: bool}>
      */
-    protected const ETAPAS_ANTIGO_POR_ITEM = [
-        'Lobinho' => ['Pata Tenra', 'Saltador', 'Rastreador', 'Caçador'],
-        'Escoteiro' => ['Pista', 'Trilha', 'Rumo', 'Travessia'],
+    protected const POOLS_ANTIGO_POR_ITEM = [
+        'Lobinho' => [
+            ['pool' => 'Pata Tenra e Saltador', 'meio' => 'Pata Tenra', 'cheio' => 'Saltador', 'usa_introdutorio' => true],
+            ['pool' => 'Rastreador e Caçador', 'meio' => 'Rastreador', 'cheio' => 'Caçador', 'usa_introdutorio' => false],
+        ],
+        'Escoteiro' => [
+            ['pool' => 'Pista e Trilha', 'meio' => 'Pista', 'cheio' => 'Trilha', 'usa_introdutorio' => false],
+            ['pool' => 'Rumo e Travessia', 'meio' => 'Rumo', 'cheio' => 'Travessia', 'usa_introdutorio' => false],
+        ],
     ];
 
     /**
@@ -68,7 +87,23 @@ class EtapaProgressaoService
      */
     public static function etapasAntigoPorRamo(string $ramoNome): array
     {
-        return self::ETAPAS_ANTIGO_POR_ITEM[$ramoNome] ?? [];
+        return array_column(self::POOLS_ANTIGO_POR_ITEM[$ramoNome] ?? [], 'pool');
+    }
+
+    /**
+     * Se a piscina (valor da coluna `etapa`) exige que um subconjunto fixo de
+     * itens (o "Período Introdutório") esteja 100% concluído pra valer a
+     * 1ª etapa da piscina, em vez de uma fração qualquer de 50%.
+     */
+    public static function poolUsaIntrodutorio(string $ramoNome, ?string $pool): bool
+    {
+        foreach (self::POOLS_ANTIGO_POR_ITEM[$ramoNome] ?? [] as $definicao) {
+            if ($definicao['pool'] === $pool) {
+                return $definicao['usa_introdutorio'];
+            }
+        }
+
+        return false;
     }
 
     // ------------------------------------------------------------------
@@ -228,30 +263,56 @@ class EtapaProgressaoService
 
     protected function etapaAntigoPorItem(Jovem $jovem, string $ramoNome): string
     {
-        $etapas = self::ETAPAS_ANTIGO_POR_ITEM[$ramoNome];
+        $pools = self::POOLS_ANTIGO_POR_ITEM[$ramoNome];
 
-        foreach ($etapas as $etapa) {
-            $itens = ItemAntigo::query()
-                ->whereHas('competencia.areaDesenvolvimento', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
-                ->where('etapa', $etapa)
-                ->get();
+        foreach ($pools as $definicao) {
+            $status = $this->statusPoolAntigoPorItem($jovem, $definicao);
 
-            // Sem itens cadastrados pra essa etapa ainda (planilha não importada):
-            // considera satisfeita por vacuidade, igual à regra de Bloco sem Obrigatórias (Fase 5).
-            if ($itens->isEmpty()) {
+            // Piscina 100% concluída: passa pra próxima (piscinas são
+            // independentes na apuração, mas a etapa exibida ainda percorre
+            // na ordem nominal e mostra a primeira piscina não concluída).
+            if ($status === 2) {
                 continue;
             }
 
-            $todosConcluidos = $itens->every(
-                fn (ItemAntigo $item) => $this->creditoService->itemAntigoConcluido($jovem, $item)
-            );
-
-            if (! $todosConcluidos) {
-                return $etapa;
-            }
+            return $status === 1 ? $definicao['cheio'] : $definicao['meio'];
         }
 
-        return end($etapas).' concluída';
+        return end($pools)['cheio'].' concluída';
+    }
+
+    /**
+     * @param  array{pool: string, meio: string, cheio: string, usa_introdutorio: bool}  $definicao
+     * @return int 0 = nem a metade da piscina, 1 = metade atingida (ou Período Introdutório completo), 2 = 100% da piscina
+     */
+    protected function statusPoolAntigoPorItem(Jovem $jovem, array $definicao): int
+    {
+        $itens = ItemAntigo::query()
+            ->whereHas('competencia.areaDesenvolvimento', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
+            ->where('etapa', $definicao['pool'])
+            ->get();
+
+        // Sem itens cadastrados nessa piscina ainda (planilha não importada):
+        // considera satisfeita por vacuidade, igual à regra de Bloco sem Obrigatórias (Fase 5).
+        if ($itens->isEmpty()) {
+            return 2;
+        }
+
+        $itemConcluido = fn (ItemAntigo $item) => $this->creditoService->itemAntigoConcluido($jovem, $item);
+
+        if ($itens->every($itemConcluido)) {
+            return 2;
+        }
+
+        if ($definicao['usa_introdutorio']) {
+            $introdutorios = $itens->where('introdutorio', true);
+
+            $meioAtingido = $introdutorios->isEmpty() || $introdutorios->every($itemConcluido);
+        } else {
+            $meioAtingido = $itens->filter($itemConcluido)->count() >= ($itens->count() / 2);
+        }
+
+        return $meioAtingido ? 1 : 0;
     }
 
     protected function etapaAntigoSenior(Jovem $jovem): string

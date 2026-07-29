@@ -136,8 +136,30 @@ Requisitos complementares do Reconhecimento (novo), chaves em
   "Cidadania" do Pioneiro exigindo também 2 flags complementares além do
   50%. *O corte de 10% foi interpretado como parte de "Comprometimento"
   (sem nome próprio distinto) — ver pendência conhecida nº3).
-- **Lobinho e Escoteiro**: cada item tem uma `etapa` marcada; a etapa atual
-  do jovem é a primeira etapa (em ordem) ainda não 100% concluída.
+- **Lobinho e Escoteiro**: os itens não têm 4 etapas individuais — são
+  agrupados em **2 "piscinas"** (a coluna `etapa` grava o nome da piscina).
+  Cada piscina cobre 2 etapas seguidas, indiferentes entre si:
+  - Escoteiro: piscina "Pista e Trilha" (50% = Pista, 100% = Trilha) e
+    piscina "Rumo e Travessia" (50% = Rumo, 100% = Travessia).
+  - Lobinho: piscina "Pata Tenra e Saltador" (100% = Saltador) e piscina
+    "Rastreador e Caçador" (50% = Rastreador, 100% = Caçador). A 1ª piscina
+    do Lobinho tem uma regra especial: existe um **Período Introdutório**
+    (subconjunto fixo de itens marcados `introdutorio = true` em
+    `itens_antigos`) que precisa estar **100% concluído** — não uma fração
+    qualquer — pra valer a etapa "Pata Tenra". Sem isso, mesmo com 50% da
+    piscina concluído, o jovem ainda aparece em "Pata Tenra".
+  - As duas piscinas de cada ramo são **independentes** na apuração (o
+    cálculo da 2ª não depende da 1ª estar concluída). A "etapa atual"
+    exibida, porém, ainda percorre as piscinas na ordem nominal e mostra a
+    primeira que não estiver 100% — decisão de design registrada em
+    `EtapaProgressaoService::etapaAntigoPorItem()`, a confirmar com o
+    usuário se surgir um caso real de piscina 2 adiantada com piscina 1
+    pendente.
+  - Cadastro: campo "Piscina de etapas" (Select, opções vêm de
+    `EtapaProgressaoService::etapasAntigoPorRamo()`) + campo "Introdutório"
+    (Toggle, só aparece pra piscinas que usam essa regra) na aba Itens de
+    Competência Antiga. Importação de planilha tem coluna opcional
+    "Introdutório" (aceita Sim/S/1/X/Verdadeiro/True).
 
 Requisitos complementares do Reconhecimento (antigo): 4 chaves para
 Lobinho, 5 para Escoteiro, 5 para Sênior, 4 para Pioneiro (divididos entre

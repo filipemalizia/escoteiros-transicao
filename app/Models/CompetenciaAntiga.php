@@ -21,4 +21,13 @@ class CompetenciaAntiga extends Model
     {
         return $this->hasMany(ItemAntigo::class, 'competencia_id');
     }
+
+    /**
+     * Se apagar, os itens desta competência (e progresso/equivalências
+     * ligadas a eles) seriam apagados em cascata.
+     */
+    public function possuiItensComDadosVinculados(): bool
+    {
+        return $this->itens->contains(fn (ItemAntigo $item) => $item->possuiDadosVinculados());
+    }
 }

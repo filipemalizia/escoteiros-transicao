@@ -93,6 +93,10 @@ class ImportarPlanilha extends Page
                 ? 'Etapa — <strong>obrigatória</strong> para o ramo '.$ramo->nome.'. Valores aceitos: '.implode(', ', $etapas).'.'
                 : 'Etapa — não se aplica ao ramo '.$ramo->nome.' (pode deixar em branco).';
 
+            if ($ramo->nome === 'Lobinho') {
+                $linhas[] = 'Introdutório — opcional. Marque "Sim" para os itens do Período Introdutório (obrigatórios pra 1ª etapa da piscina "Pata Tenra e Saltador").';
+            }
+
             $linhas[] = 'Observação/Requisito — opcional.';
         } else {
             $linhas = [
