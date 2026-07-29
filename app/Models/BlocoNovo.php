@@ -26,4 +26,15 @@ class BlocoNovo extends Model
     {
         return $this->hasMany(EquivalenciaBloco::class, 'bloco_novo_id');
     }
+
+    /**
+     * Se apagar, os itens deste bloco (e progresso/equivalências ligadas a
+     * eles), além das equivalências de bloco vinculadas, seriam apagados em
+     * cascata.
+     */
+    public function possuiItensComDadosVinculados(): bool
+    {
+        return $this->itens->contains(fn (ItemNovo $item) => $item->possuiDadosVinculados())
+            || $this->equivalenciasBloco()->exists();
+    }
 }

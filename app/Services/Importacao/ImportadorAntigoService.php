@@ -9,6 +9,7 @@ use App\Models\Ramo;
 use App\Services\EtapaProgressaoService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class ImportadorAntigoService
 {
@@ -21,6 +22,7 @@ class ImportadorAntigoService
         'codigo' => 'Código',
         'item' => 'Item',
         'etapa' => 'Etapa',
+        'introdutorio' => 'Introdutório',
         'observacao' => 'Observação/Requisito',
     ];
 
@@ -106,8 +108,10 @@ class ImportadorAntigoService
             }
         }
 
+        $introdutorio = $this->valorBooleano($this->valor($linha, $cabecalho, 'introdutorio'));
+
         try {
-            DB::transaction(function () use ($areaNome, $descricaoFinal, $codigo, $descricaoItem, $etapa, $ramo, $resumo) {
+            DB::transaction(function () use ($areaNome, $descricaoFinal, $codigo, $descricaoItem, $etapa, $introdutorio, $ramo, $resumo) {
                 $area = AreaDesenvolvimentoAntiga::firstOrCreate([
                     'ramo_id' => $ramo->id,
                     'nome' => $areaNome,
@@ -135,6 +139,7 @@ class ImportadorAntigoService
                     'codigo' => $codigo,
                     'descricao' => $descricaoItem,
                     'etapa' => $etapa,
+                    'introdutorio' => $introdutorio,
                 ]);
 
                 $resumo->itensCriados++;
@@ -142,5 +147,14 @@ class ImportadorAntigoService
         } catch (ImportLinhaException $e) {
             $resumo->registrarErro($numeroLinha, $e->getMessage());
         }
+    }
+
+    protected function valorBooleano(?string $valor): bool
+    {
+        if (blank($valor)) {
+            return false;
+        }
+
+        return in_array(Str::of($valor)->trim()->lower()->ascii()->toString(), ['sim', 's', '1', 'x', 'verdadeiro', 'true'], true);
     }
 }

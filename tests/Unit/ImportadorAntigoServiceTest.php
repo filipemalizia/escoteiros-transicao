@@ -25,14 +25,14 @@ it('importa item do Lobinho com etapa e grava a coluna etapa', function () {
     $ramo = Ramo::create(['nome' => 'Lobinho']);
 
     $linhas = linhasAntigo([
-        ['Físico', 'Saúde', '', 'FIS-001', 'Participar de atividade física', 'Saltador', ''],
+        ['Físico', 'Saúde', '', 'FIS-001', 'Participar de atividade física', 'Pata Tenra e Saltador', ''],
     ]);
 
     $resumo = $this->service->importar($linhas, $ramo);
 
     expect($resumo->itensCriados)->toBe(1)
         ->and($resumo->itensIgnorados)->toBe(0)
-        ->and(ItemAntigo::where('codigo', 'FIS-001')->first()->etapa)->toBe('Saltador');
+        ->and(ItemAntigo::where('codigo', 'FIS-001')->first()->etapa)->toBe('Pata Tenra e Saltador');
 });
 
 it('ignora a linha e registra erro quando a etapa esta em branco para ramo que exige etapa', function () {

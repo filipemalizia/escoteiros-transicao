@@ -31,7 +31,7 @@ function criarJovem(string $ramoNome): Jovem
     ]);
 }
 
-function criarItemAntigoComEtapa(Jovem $jovem, string $etapa, bool $concluido, ?CompetenciaAntiga $competencia = null): ItemAntigo
+function criarItemAntigoComEtapa(Jovem $jovem, string $etapa, bool $concluido, ?CompetenciaAntiga $competencia = null, bool $introdutorio = false): ItemAntigo
 {
     static $contador = 0;
     $contador++;
@@ -46,6 +46,7 @@ function criarItemAntigoComEtapa(Jovem $jovem, string $etapa, bool $concluido, ?
         'codigo' => "IT-{$contador}",
         'descricao' => "Item {$contador}",
         'etapa' => $etapa,
+        'introdutorio' => $introdutorio,
     ]);
 
     if ($concluido) {
@@ -103,27 +104,52 @@ function criarBlocoNovoConcluido(Jovem $jovem, EixoNovo $eixo, string $codigo): 
     return $bloco;
 }
 
-it('Lobinho antigo: Pata Tenra 100% mas Saltador parcial -> etapa atual Saltador', function () {
+it('Lobinho antigo: completa o Período Introdutório mas nao o restante da piscina -> etapa atual Saltador', function () {
     $jovem = criarJovem('Lobinho');
 
-    criarItemAntigoComEtapa($jovem, 'Pata Tenra', true);
-    criarItemAntigoComEtapa($jovem, 'Pata Tenra', true);
+    // itens do Período Introdutório (obrigatórios pra Pata Tenra), ambos concluídos
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', true, introdutorio: true);
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', true, introdutorio: true);
 
-    criarItemAntigoComEtapa($jovem, 'Saltador', true);
-    criarItemAntigoComEtapa($jovem, 'Saltador', false);
-
-    criarItemAntigoComEtapa($jovem, 'Rastreador', false);
-    criarItemAntigoComEtapa($jovem, 'Caçador', false);
+    // demais itens da piscina "Pata Tenra e Saltador", ainda pendentes
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', false);
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', false);
 
     expect($this->service->etapaAntigo($jovem->fresh()))->toBe('Saltador');
 });
 
-it('Escoteiro antigo: todas as 4 etapas 100% -> Travessia concluída', function () {
+it('Lobinho antigo: Período Introdutório incompleto -> etapa atual Pata Tenra, mesmo com metade da piscina concluída', function () {
+    $jovem = criarJovem('Lobinho');
+
+    // 1 dos 2 itens introdutórios concluído (incompleto)
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', true, introdutorio: true);
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', false, introdutorio: true);
+
+    // itens não introdutórios concluídos (dariam 50% da piscina, mas isso não basta aqui)
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', true);
+    criarItemAntigoComEtapa($jovem, 'Pata Tenra e Saltador', false);
+
+    expect($this->service->etapaAntigo($jovem->fresh()))->toBe('Pata Tenra');
+});
+
+it('Escoteiro antigo: metade da piscina Pista e Trilha concluída -> etapa atual Trilha', function () {
     $jovem = criarJovem('Escoteiro');
 
-    foreach (['Pista', 'Trilha', 'Rumo', 'Travessia'] as $etapa) {
-        criarItemAntigoComEtapa($jovem, $etapa, true);
-    }
+    criarItemAntigoComEtapa($jovem, 'Pista e Trilha', true);
+    criarItemAntigoComEtapa($jovem, 'Pista e Trilha', true);
+    criarItemAntigoComEtapa($jovem, 'Pista e Trilha', false);
+    criarItemAntigoComEtapa($jovem, 'Pista e Trilha', false);
+
+    expect($this->service->etapaAntigo($jovem->fresh()))->toBe('Trilha');
+});
+
+it('Escoteiro antigo: as duas piscinas 100% concluídas -> Travessia concluída', function () {
+    $jovem = criarJovem('Escoteiro');
+
+    criarItemAntigoComEtapa($jovem, 'Pista e Trilha', true);
+    criarItemAntigoComEtapa($jovem, 'Pista e Trilha', true);
+    criarItemAntigoComEtapa($jovem, 'Rumo e Travessia', true);
+    criarItemAntigoComEtapa($jovem, 'Rumo e Travessia', true);
 
     expect($this->service->etapaAntigo($jovem->fresh()))->toBe('Travessia concluída');
 });
