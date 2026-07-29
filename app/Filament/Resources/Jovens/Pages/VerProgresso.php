@@ -28,6 +28,14 @@ class VerProgresso extends Page
 {
     use InteractsWithRecord;
 
+    /**
+     * Ordem de exibição das Áreas de Desenvolvimento do programa antigo
+     * (documento oficial, igual pros 4 ramos). Áreas não listadas aqui
+     * (ex.: cadastro divergente) aparecem no final, na ordem alfabética
+     * padrão, em vez de sumirem.
+     */
+    protected const ORDEM_AREAS_ANTIGAS = ['Físico', 'Intelectual', 'Caráter', 'Afetivo', 'Social', 'Espiritual'];
+
     protected static string $resource = JovemResource::class;
 
     protected string $view = 'filament.resources.jovens.pages.ver-progresso';
@@ -90,7 +98,13 @@ class VerProgresso extends Page
             ->where('ramo_id', $this->getRecord()->ramo_atual_id)
             ->with('competencias.itens')
             ->orderBy('nome')
-            ->get();
+            ->get()
+            ->sortBy(function (AreaDesenvolvimentoAntiga $area) {
+                $indice = array_search($area->nome, self::ORDEM_AREAS_ANTIGAS, true);
+
+                return $indice === false ? 999 : $indice;
+            })
+            ->values();
     }
 
     public function getEixosNovos(): Collection

@@ -74,8 +74,10 @@ equivalencia_blocos            — id, item_antigo_id (FK itens_antigos),
                                   +1 na cota de Ações Variáveis do bloco
                                   (`StatusProgressaoService::statusBloco()`).
                                   Cadastro em lote na tela "Equivalência de
-                                  Bloco em Lote". Cuidado: não vincular o
-                                  mesmo item antigo aqui E como equivalência
+                                  Bloco em Lote", e CRUD completo (ver/editar/
+                                  excluir os já criados) no Resource
+                                  "Equivalências de Bloco". Cuidado: não
+                                  vincular o mesmo item antigo aqui E como equivalência
                                   item-a-item pro mesmo bloco — contaria em
                                   dobro.
 
