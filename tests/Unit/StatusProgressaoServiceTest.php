@@ -27,7 +27,13 @@ beforeEach(function () {
     ]);
 });
 
-function marcarConcluido(Jovem $jovem, string $tipo, int $itemId): void
+/**
+ * Marca um item como concluído direto e esquece o cache memoizado do
+ * serviço (ver aviso em EquivalenciaCreditoService) — necessário porque
+ * os testes reusam a mesma instância de StatusProgressaoService antes e
+ * depois da mudança.
+ */
+function marcarConcluido(Jovem $jovem, string $tipo, int $itemId, StatusProgressaoService $service): void
 {
     $modelo = $tipo === 'antigo' ? ProgressoAntigo::class : ProgressoNovo::class;
     $coluna = $tipo === 'antigo' ? 'item_antigo_id' : 'item_novo_id';
@@ -39,6 +45,8 @@ function marcarConcluido(Jovem $jovem, string $tipo, int $itemId): void
         'data_conclusao' => today(),
         'registrado_por_id' => null,
     ]);
+
+    $service->limparCache();
 }
 
 it('marca competencia como Concluído quando 100% dos itens estao concluidos, e Parcial quando nao', function () {
@@ -50,13 +58,13 @@ it('marca competencia como Concluído quando 100% dos itens estao concluidos, e 
     $status = $this->service->statusCompetencia($this->jovem, $competencia->fresh());
     expect($status['status'])->toBe('Pendente');
 
-    marcarConcluido($this->jovem, 'antigo', $item1->id);
+    marcarConcluido($this->jovem, 'antigo', $item1->id, $this->service);
     $status = $this->service->statusCompetencia($this->jovem, $competencia->fresh());
     expect($status['status'])->toBe('Parcial')
         ->and($status['itens_concluidos'])->toBe(1)
         ->and($status['itens_necessarios'])->toBe(2);
 
-    marcarConcluido($this->jovem, 'antigo', $item2->id);
+    marcarConcluido($this->jovem, 'antigo', $item2->id, $this->service);
     $status = $this->service->statusCompetencia($this->jovem, $competencia->fresh());
     expect($status['status'])->toBe('Concluído');
 });
@@ -70,13 +78,13 @@ it('marca bloco como Concluído quando obrigatorias ok e variaveis suficientes',
     $variavel2 = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-003', 'descricao' => 'Var 2', 'tipo_acao' => 'Variável']);
     ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-004', 'descricao' => 'Var 3', 'tipo_acao' => 'Variável']);
 
-    marcarConcluido($this->jovem, 'novo', $obrigatoria->id);
-    marcarConcluido($this->jovem, 'novo', $variavel1->id);
+    marcarConcluido($this->jovem, 'novo', $obrigatoria->id, $this->service);
+    marcarConcluido($this->jovem, 'novo', $variavel1->id, $this->service);
 
     $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
     expect($status['status'])->toBe('Parcial'); // só 1 de 2 variáveis necessárias
 
-    marcarConcluido($this->jovem, 'novo', $variavel2->id);
+    marcarConcluido($this->jovem, 'novo', $variavel2->id, $this->service);
 
     $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
     expect($status['status'])->toBe('Concluído')
@@ -98,15 +106,15 @@ it('conta itens do programa antigo vinculados via EquivalenciaBloco como Ação 
     EquivalenciaBloco::create(['item_antigo_id' => $itemAntigo1->id, 'bloco_novo_id' => $bloco->id]);
     EquivalenciaBloco::create(['item_antigo_id' => $itemAntigo2->id, 'bloco_novo_id' => $bloco->id]);
 
-    marcarConcluido($this->jovem, 'novo', $obrigatoria->id);
-    marcarConcluido($this->jovem, 'antigo', $itemAntigo1->id);
+    marcarConcluido($this->jovem, 'novo', $obrigatoria->id, $this->service);
+    marcarConcluido($this->jovem, 'antigo', $itemAntigo1->id, $this->service);
 
     $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
     expect($status['variaveis_concluidas'])->toBe(1)
         ->and($status['variaveis_concluidas_via_bloco'])->toBe(1)
         ->and($status['status'])->toBe('Parcial');
 
-    marcarConcluido($this->jovem, 'antigo', $itemAntigo2->id);
+    marcarConcluido($this->jovem, 'antigo', $itemAntigo2->id, $this->service);
 
     $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
     expect($status['variaveis_concluidas'])->toBe(2)
@@ -121,13 +129,13 @@ it('marca bloco como Concluído via Substitutiva mesmo com poucas variaveis', fu
     ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-002', 'descricao' => 'Var 1', 'tipo_acao' => 'Variável']);
     $substitutiva = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-003', 'descricao' => 'Sub', 'tipo_acao' => 'Substitutiva']);
 
-    marcarConcluido($this->jovem, 'novo', $obrigatoria->id);
+    marcarConcluido($this->jovem, 'novo', $obrigatoria->id, $this->service);
     // nenhuma variável concluída ainda
 
     $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
     expect($status['status'])->toBe('Parcial');
 
-    marcarConcluido($this->jovem, 'novo', $substitutiva->id);
+    marcarConcluido($this->jovem, 'novo', $substitutiva->id, $this->service);
 
     $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
     expect($status['status'])->toBe('Concluído')
@@ -143,8 +151,8 @@ it('nunca marca bloco como Concluído se falta obrigatoria, mesmo com variaveis 
     $variavel = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-002', 'descricao' => 'Var 1', 'tipo_acao' => 'Variável']);
     $substitutiva = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-003', 'descricao' => 'Sub', 'tipo_acao' => 'Substitutiva']);
 
-    marcarConcluido($this->jovem, 'novo', $variavel->id);
-    marcarConcluido($this->jovem, 'novo', $substitutiva->id);
+    marcarConcluido($this->jovem, 'novo', $variavel->id, $this->service);
+    marcarConcluido($this->jovem, 'novo', $substitutiva->id, $this->service);
 
     $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
 
@@ -158,7 +166,7 @@ it('calcula percentuais e pendencias do programa novo corretamente', function ()
 
     $blocoCompleto = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco Completo']);
     $itemCompleto = ItemNovo::create(['bloco_id' => $blocoCompleto->id, 'codigo' => 'A-001', 'descricao' => 'Item', 'tipo_acao' => 'Obrigatória']);
-    marcarConcluido($this->jovem, 'novo', $itemCompleto->id);
+    marcarConcluido($this->jovem, 'novo', $itemCompleto->id, $this->service);
 
     $blocoIncompleto = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco Incompleto']);
     ItemNovo::create(['bloco_id' => $blocoIncompleto->id, 'codigo' => 'B-001', 'descricao' => 'Item', 'tipo_acao' => 'Obrigatória']);
@@ -183,7 +191,7 @@ it('pendenciasNovo lista os itens Obrigatórios pendentes e só lista Variáveis
     ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'VAR-2', 'descricao' => 'Var 2', 'tipo_acao' => 'Variável']);
 
     // só 1 de 2 variáveis concluída, obrigatória pendente
-    marcarConcluido($this->jovem, 'novo', $variavel1->id);
+    marcarConcluido($this->jovem, 'novo', $variavel1->id, $this->service);
 
     $pendencias = $this->service->pendenciasNovo($this->jovem);
     expect($pendencias)->toHaveCount(1);
@@ -202,7 +210,7 @@ it('pendenciasNovo nao lista Variáveis pendentes quando o minimo ja foi atingid
     ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'VAR-2', 'descricao' => 'Var 2', 'tipo_acao' => 'Variável']);
 
     // minimo (1) ja atingido via VAR-1, obrigatória ainda pendente
-    marcarConcluido($this->jovem, 'novo', $variavel1->id);
+    marcarConcluido($this->jovem, 'novo', $variavel1->id, $this->service);
 
     $pendencias = $this->service->pendenciasNovo($this->jovem);
     expect($pendencias[0]['variaveis_pendentes'])->toBeEmpty();
@@ -214,7 +222,7 @@ it('pendenciasAntigo lista apenas itens nao concluidos', function () {
     $itemConcluido = ItemAntigo::create(['competencia_id' => $competencia->id, 'codigo' => 'FIS-001', 'descricao' => 'Item 1']);
     $itemPendente = ItemAntigo::create(['competencia_id' => $competencia->id, 'codigo' => 'FIS-002', 'descricao' => 'Item 2']);
 
-    marcarConcluido($this->jovem, 'antigo', $itemConcluido->id);
+    marcarConcluido($this->jovem, 'antigo', $itemConcluido->id, $this->service);
 
     $pendencias = $this->service->pendenciasAntigo($this->jovem);
 
@@ -232,7 +240,7 @@ it('resumoNovo: variaveis_atingidas soma no maximo a quantidade minima do bloco,
 
     // conclui 4 das 5 variaveis (minimo exigido eh 3)
     foreach ($variaveis->take(4) as $variavel) {
-        marcarConcluido($this->jovem, 'novo', $variavel->id);
+        marcarConcluido($this->jovem, 'novo', $variavel->id, $this->service);
     }
 
     $resumo = $this->service->resumoNovo($this->jovem);
@@ -251,8 +259,8 @@ it('resumoNovo: soma corretamente Obrigatorias entre multiplos Blocos', function
     $bloco2 = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco 2']);
     ItemNovo::create(['bloco_id' => $bloco2->id, 'codigo' => 'OBG-2A', 'descricao' => 'Obg', 'tipo_acao' => 'Obrigatória']);
 
-    marcarConcluido($this->jovem, 'novo', $obg1a->id);
-    marcarConcluido($this->jovem, 'novo', $obg1b->id);
+    marcarConcluido($this->jovem, 'novo', $obg1a->id, $this->service);
+    marcarConcluido($this->jovem, 'novo', $obg1b->id, $this->service);
     // OBG-2A fica pendente
 
     $resumo = $this->service->resumoNovo($this->jovem);

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Users\Tables;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -20,6 +21,13 @@ class UsersTable
                 TextColumn::make('email')
                     ->label('E-mail')
                     ->searchable(),
+                IconColumn::make('is_admin')
+                    ->label('Admin')
+                    ->boolean(),
+                TextColumn::make('equipes.nome')
+                    ->label('Equipes')
+                    ->badge()
+                    ->placeholder('-'),
                 TextColumn::make('created_at')
                     ->label('Criado em')
                     ->dateTime('d/m/Y H:i')

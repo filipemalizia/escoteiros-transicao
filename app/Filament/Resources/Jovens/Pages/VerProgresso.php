@@ -2,20 +2,19 @@
 
 namespace App\Filament\Resources\Jovens\Pages;
 
+use App\Concerns\ExibeProgressoDoJovem;
 use App\Filament\Resources\Jovens\JovemResource;
-use App\Models\AreaDesenvolvimentoAntiga;
 use App\Models\BlocoNovo;
-use App\Models\CompetenciaAntiga;
-use App\Models\EixoNovo;
-use App\Models\ItemAntigo;
-use App\Models\ItemNovo;
+use App\Models\ItemPersonalizado;
+use App\Models\Jovem;
 use App\Models\ProgressoAntigo;
 use App\Models\ProgressoNovo;
-use App\Services\EquivalenciaCreditoService;
-use App\Services\EtapaProgressaoService;
+use App\Models\ProgressoPersonalizado;
 use App\Services\StatusProgressaoService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\Concerns\InteractsWithRecord;
 use Filament\Resources\Pages\Page;
 use Illuminate\Contracts\Support\Htmlable;
@@ -26,21 +25,21 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class VerProgresso extends Page
 {
+    use ExibeProgressoDoJovem;
     use InteractsWithRecord;
-
-    /**
-     * Ordem de exibição das Áreas de Desenvolvimento do programa antigo
-     * (documento oficial, igual pros 4 ramos). Áreas não listadas aqui
-     * (ex.: cadastro divergente) aparecem no final, na ordem alfabética
-     * padrão, em vez de sumirem.
-     */
-    protected const ORDEM_AREAS_ANTIGAS = ['Físico', 'Intelectual', 'Caráter', 'Afetivo', 'Social', 'Espiritual'];
 
     protected static string $resource = JovemResource::class;
 
     protected string $view = 'filament.resources.jovens.pages.ver-progresso';
 
-    public string $abaAtiva = 'antigo';
+    public string $abaAtiva = 'novo';
+
+    public ?int $blocoParaNovoItemPersonalizado = null;
+
+    public string $novoItemPersonalizadoDescricao = '';
+
+    /** @var array<int, int> */
+    public array $novoItemPersonalizadoOutrosJovensIds = [];
 
     public function mount(int|string $record): void
     {
@@ -54,35 +53,64 @@ class VerProgresso extends Page
         abort_unless(static::getResource()::canView($this->getRecord()), 403);
     }
 
+    protected function jovem(): Jovem
+    {
+        return $this->getRecord();
+    }
+
     /**
-     * @return array<Action>
+     * @return array<Action|ActionGroup>
      */
     protected function getHeaderActions(): array
     {
         return [
-            Action::make('baixarPendenciasPdf')
+            ActionGroup::make([
+                Action::make('baixarPendenciasPdfTodos')
+                    ->label('Baixar Todos')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->action(fn () => $this->baixarPendenciasPdf('ambos')),
+                Action::make('baixarPendenciasPdfNovo')
+                    ->label('Baixar Novo Programa')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->action(fn () => $this->baixarPendenciasPdf('novo')),
+                Action::make('baixarPendenciasPdfAntigo')
+                    ->label('Baixar Programa Antigo')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->action(fn () => $this->baixarPendenciasPdf('antigo')),
+            ])
                 ->label('Baixar Pendências (PDF)')
                 ->icon('heroicon-o-document-arrow-down')
                 ->color('gray')
-                ->action(fn () => $this->baixarPendenciasPdf()),
+                ->button(),
         ];
     }
 
-    protected function baixarPendenciasPdf(): StreamedResponse
+    protected function baixarPendenciasPdf(string $programa): StreamedResponse
     {
         $jovem = $this->getRecord();
         $service = app(StatusProgressaoService::class);
 
+        $mostrarAntigo = in_array($programa, ['ambos', 'antigo'], true);
+        $mostrarNovo = in_array($programa, ['ambos', 'novo'], true);
+
         $dados = [
             'jovem' => $jovem,
-            'resumoAntigo' => $service->resumoAntigo($jovem),
-            'pendenciasAntigo' => $service->pendenciasAntigo($jovem),
-            'resumoNovo' => $service->resumoNovo($jovem),
-            'pendenciasNovo' => $service->pendenciasNovo($jovem),
+            'mostrarAntigo' => $mostrarAntigo,
+            'mostrarNovo' => $mostrarNovo,
+            'resumoAntigo' => $mostrarAntigo ? $service->resumoAntigo($jovem) : null,
+            'pendenciasAntigo' => $mostrarAntigo ? $service->pendenciasAntigo($jovem) : [],
+            'resumoNovo' => $mostrarNovo ? $service->resumoNovo($jovem) : null,
+            'pendenciasNovo' => $mostrarNovo ? $service->pendenciasNovo($jovem) : [],
         ];
 
         $pdf = Pdf::loadView('pdf.pendencias', $dados);
-        $nomeArquivo = 'pendencias-'.Str::slug($jovem->nome).'.pdf';
+
+        $sufixo = match ($programa) {
+            'novo' => '-programa-novo',
+            'antigo' => '-programa-antigo',
+            default => '',
+        };
+        $nomeArquivo = 'pendencias-'.Str::slug($jovem->nome).$sufixo.'.pdf';
 
         return response()->streamDownload(fn () => print ($pdf->output()), $nomeArquivo, ['Content-Type' => 'application/pdf']);
     }
@@ -90,183 +118,6 @@ class VerProgresso extends Page
     public function getTitle(): string|Htmlable
     {
         return "Progresso de {$this->getRecord()->nome}";
-    }
-
-    public function getAreasAntigas(): Collection
-    {
-        return AreaDesenvolvimentoAntiga::query()
-            ->where('ramo_id', $this->getRecord()->ramo_atual_id)
-            ->with('competencias.itens')
-            ->orderBy('nome')
-            ->get()
-            ->sortBy(function (AreaDesenvolvimentoAntiga $area) {
-                $indice = array_search($area->nome, self::ORDEM_AREAS_ANTIGAS, true);
-
-                return $indice === false ? 999 : $indice;
-            })
-            ->values();
-    }
-
-    public function getEixosNovos(): Collection
-    {
-        return EixoNovo::query()
-            ->where('ramo_id', $this->getRecord()->ramo_atual_id)
-            ->with(['blocos.itens.especialidade', 'blocos.equivalenciasBloco.itemAntigo'])
-            ->orderBy('nome')
-            ->get();
-    }
-
-    /**
-     * Registros diretos de progresso (Fase 4), indexados por item_antigo_id.
-     * Usados pra saber se um item foi marcado diretamente (e por quem/quando),
-     * em oposição a estar concluído só por crédito de equivalência.
-     *
-     * @return array<int, ProgressoAntigo>
-     */
-    public function getProgressoAntigoMap(): array
-    {
-        return ProgressoAntigo::query()
-            ->where('jovem_id', $this->getRecord()->id)
-            ->with('registradoPor')
-            ->get()
-            ->keyBy('item_antigo_id')
-            ->all();
-    }
-
-    /**
-     * @return array<int, ProgressoNovo>
-     */
-    public function getProgressoNovoMap(): array
-    {
-        return ProgressoNovo::query()
-            ->where('jovem_id', $this->getRecord()->id)
-            ->with('registradoPor')
-            ->get()
-            ->keyBy('item_novo_id')
-            ->all();
-    }
-
-    /**
-     * @return array{status: string, itens_necessarios: int, itens_concluidos: int}
-     */
-    public function statusCompetencia(CompetenciaAntiga $competencia): array
-    {
-        return app(StatusProgressaoService::class)->statusCompetencia($this->getRecord(), $competencia);
-    }
-
-    /**
-     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, substitutiva_concluida: bool}
-     */
-    public function statusBloco(BlocoNovo $bloco): array
-    {
-        return app(StatusProgressaoService::class)->statusBloco($this->getRecord(), $bloco);
-    }
-
-    /**
-     * @return array{total: int, concluidas: int, percentual: float}
-     */
-    public function getPercentualAntigo(): array
-    {
-        return app(StatusProgressaoService::class)->percentualAntigo($this->getRecord());
-    }
-
-    /**
-     * @return array{total: int, concluidos: int, percentual: float}
-     */
-    public function getPercentualNovo(): array
-    {
-        return app(StatusProgressaoService::class)->percentualNovo($this->getRecord());
-    }
-
-    /**
-     * @return array<int, array{bloco: BlocoNovo, status: string, detalhe: string}>
-     */
-    public function getPendenciasNovo(): array
-    {
-        return app(StatusProgressaoService::class)->pendenciasNovo($this->getRecord());
-    }
-
-    /**
-     * Concluído (direto OU crédito de equivalência). Usado pro estado visual do checkbox.
-     */
-    public function itemAntigoConcluido(ItemAntigo $item): bool
-    {
-        return app(EquivalenciaCreditoService::class)->itemAntigoConcluido($this->getRecord(), $item);
-    }
-
-    /**
-     * Concluído (direto OU crédito de equivalência). Usado pro estado visual do checkbox.
-     */
-    public function itemNovoConcluido(ItemNovo $item): bool
-    {
-        return app(EquivalenciaCreditoService::class)->itemNovoConcluido($this->getRecord(), $item);
-    }
-
-    public function getEtapaAntigo(): string
-    {
-        return app(EtapaProgressaoService::class)->etapaAntigo($this->getRecord());
-    }
-
-    public function getEtapaNovo(): string
-    {
-        return app(EtapaProgressaoService::class)->etapaNovo($this->getRecord());
-    }
-
-    public function getElegivelReconhecimentoAntigo(): bool
-    {
-        return app(EtapaProgressaoService::class)->elegivelReconhecimentoAntigo($this->getRecord());
-    }
-
-    public function getElegivelReconhecimentoNovo(): bool
-    {
-        return app(EtapaProgressaoService::class)->elegivelReconhecimentoNovo($this->getRecord());
-    }
-
-    public function getNomeReconhecimentoAntigo(): string
-    {
-        return app(EtapaProgressaoService::class)->nomeReconhecimento($this->getRecord()->ramoAtual, 'antigo');
-    }
-
-    public function getNomeReconhecimentoNovo(): string
-    {
-        return app(EtapaProgressaoService::class)->nomeReconhecimento($this->getRecord()->ramoAtual, 'novo');
-    }
-
-    /**
-     * @return array<int, array{chave: string, tipo: string, label: string, meta?: int, valor: bool|int}>
-     */
-    public function getRequisitosComplementaresAntigo(): array
-    {
-        return $this->requisitosComValor(
-            app(EtapaProgressaoService::class)->chavesComplementaresAntigo($this->getRecord()->ramoAtual->nome)
-        );
-    }
-
-    /**
-     * @return array<int, array{chave: string, tipo: string, label: string, meta?: int, valor: bool|int}>
-     */
-    public function getRequisitosComplementaresNovo(): array
-    {
-        return $this->requisitosComValor(
-            app(EtapaProgressaoService::class)->chavesComplementaresNovo($this->getRecord()->ramoAtual->nome)
-        );
-    }
-
-    /**
-     * @param  array<int, array{chave: string, tipo: string, label: string, meta?: int}>  $definicoes
-     * @return array<int, array{chave: string, tipo: string, label: string, meta?: int, valor: bool|int}>
-     */
-    protected function requisitosComValor(array $definicoes): array
-    {
-        return array_map(
-            fn (array $definicao) => [
-                ...$definicao,
-                'valor' => $definicao['tipo'] === 'contador'
-                    ? $this->getRecord()->requisitoNumero($definicao['chave'])
-                    : $this->getRecord()->requisitoBool($definicao['chave']),
-            ],
-            $definicoes
-        );
     }
 
     public function toggleRequisitoBool(string $chave): void
@@ -291,22 +142,6 @@ class VerProgresso extends Page
         $this->getRecord()->unsetRelation('requisitosComplementares');
     }
 
-    /**
-     * @return array{total: int, concluidos: int, percentual: float}
-     */
-    public function getResumoAntigo(): array
-    {
-        return app(StatusProgressaoService::class)->resumoAntigo($this->getRecord());
-    }
-
-    /**
-     * @return array{blocos_total: int, blocos_concluidos: int, obrigatorias_total: int, obrigatorias_concluidas: int, variaveis_minimas_total: int, variaveis_atingidas: int}
-     */
-    public function getResumoNovo(): array
-    {
-        return app(StatusProgressaoService::class)->resumoNovo($this->getRecord());
-    }
-
     public function toggleAntigo(int $itemAntigoId): void
     {
         $progresso = ProgressoAntigo::query()->firstOrNew([
@@ -319,7 +154,13 @@ class VerProgresso extends Page
         $progresso->concluido = $concluido;
         $progresso->data_conclusao = $concluido ? Carbon::today() : null;
         $progresso->registrado_por_id = auth()->id();
+        // Rede de segurança: se o adulto marcar/desmarcar direto enquanto
+        // havia uma solicitação do jovem pendente, ela deixa de fazer sentido.
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
         $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
     }
 
     public function toggleNovo(int $itemNovoId): void
@@ -334,6 +175,193 @@ class VerProgresso extends Page
         $progresso->concluido = $concluido;
         $progresso->data_conclusao = $concluido ? Carbon::today() : null;
         $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
         $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    public function confirmarAntigo(int $itemAntigoId): void
+    {
+        $progresso = ProgressoAntigo::query()->firstOrNew([
+            'jovem_id' => $this->getRecord()->id,
+            'item_antigo_id' => $itemAntigoId,
+        ]);
+
+        $progresso->concluido = true;
+        $progresso->data_conclusao = Carbon::today();
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    public function confirmarNovo(int $itemNovoId): void
+    {
+        $progresso = ProgressoNovo::query()->firstOrNew([
+            'jovem_id' => $this->getRecord()->id,
+            'item_novo_id' => $itemNovoId,
+        ]);
+
+        $progresso->concluido = true;
+        $progresso->data_conclusao = Carbon::today();
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    public function rejeitarAntigo(int $itemAntigoId): void
+    {
+        ProgressoAntigo::query()
+            ->where('jovem_id', $this->getRecord()->id)
+            ->where('item_antigo_id', $itemAntigoId)
+            ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+    }
+
+    public function rejeitarNovo(int $itemNovoId): void
+    {
+        ProgressoNovo::query()
+            ->where('jovem_id', $this->getRecord()->id)
+            ->where('item_novo_id', $itemNovoId)
+            ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+    }
+
+    /**
+     * Jovens do mesmo ramo que o adulto logado também pode gerenciar —
+     * usado no seletor "também aplicar para" ao criar um item
+     * personalizado. Não inclui o próprio jovem desta página (esse já
+     * entra automaticamente).
+     *
+     * @return Collection<int, Jovem>
+     */
+    public function getJovensDisponiveisParaItemPersonalizado(): Collection
+    {
+        return Jovem::query()
+            ->where('ramo_atual_id', $this->getRecord()->ramo_atual_id)
+            ->where('id', '!=', $this->getRecord()->id)
+            ->when(
+                ! auth()->user()?->isAdmin(),
+                fn ($query) => $query->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+            )
+            ->orderBy('nome')
+            ->get();
+    }
+
+    public function abrirFormularioItemPersonalizado(int $blocoId): void
+    {
+        $this->blocoParaNovoItemPersonalizado = $blocoId;
+        $this->novoItemPersonalizadoDescricao = '';
+        $this->novoItemPersonalizadoOutrosJovensIds = [];
+    }
+
+    public function fecharFormularioItemPersonalizado(): void
+    {
+        $this->blocoParaNovoItemPersonalizado = null;
+    }
+
+    public function criarItemPersonalizado(): void
+    {
+        if (blank($this->novoItemPersonalizadoDescricao) || ! $this->blocoParaNovoItemPersonalizado) {
+            return;
+        }
+
+        $bloco = BlocoNovo::findOrFail($this->blocoParaNovoItemPersonalizado);
+
+        // Nunca confiar cegamente em IDs vindos do cliente: filtra só pra
+        // jovens que o adulto logado realmente pode gerenciar.
+        $idsPermitidos = $this->getJovensDisponiveisParaItemPersonalizado()->pluck('id');
+        $outrosJovensIds = collect($this->novoItemPersonalizadoOutrosJovensIds)
+            ->intersect($idsPermitidos)
+            ->all();
+
+        $item = ItemPersonalizado::create([
+            'bloco_novo_id' => $bloco->id,
+            'descricao' => $this->novoItemPersonalizadoDescricao,
+            'criado_por_id' => auth()->id(),
+        ]);
+
+        $item->jovens()->attach([$this->getRecord()->id, ...$outrosJovensIds]);
+
+        app(StatusProgressaoService::class)->limparCache();
+
+        $this->fecharFormularioItemPersonalizado();
+
+        Notification::make()
+            ->title('Item personalizado criado')
+            ->success()
+            ->send();
+    }
+
+    public function excluirItemPersonalizado(int $itemPersonalizadoId): void
+    {
+        $item = ItemPersonalizado::findOrFail($itemPersonalizadoId);
+
+        abort_unless(auth()->user()?->can('delete', $item), 403);
+
+        $item->delete();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    public function toggleItemPersonalizado(int $itemPersonalizadoId): void
+    {
+        $item = ItemPersonalizado::findOrFail($itemPersonalizadoId);
+
+        abort_unless(auth()->user()?->can('update', $item), 403);
+
+        $progresso = ProgressoPersonalizado::query()->firstOrNew([
+            'jovem_id' => $this->getRecord()->id,
+            'item_personalizado_id' => $itemPersonalizadoId,
+        ]);
+
+        $concluido = ! $progresso->concluido;
+
+        $progresso->concluido = $concluido;
+        $progresso->data_conclusao = $concluido ? Carbon::today() : null;
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    public function confirmarItemPersonalizado(int $itemPersonalizadoId): void
+    {
+        $item = ItemPersonalizado::findOrFail($itemPersonalizadoId);
+
+        abort_unless(auth()->user()?->can('update', $item), 403);
+
+        $progresso = ProgressoPersonalizado::query()->firstOrNew([
+            'jovem_id' => $this->getRecord()->id,
+            'item_personalizado_id' => $itemPersonalizadoId,
+        ]);
+
+        $progresso->concluido = true;
+        $progresso->data_conclusao = Carbon::today();
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    public function rejeitarItemPersonalizado(int $itemPersonalizadoId): void
+    {
+        $item = ItemPersonalizado::findOrFail($itemPersonalizadoId);
+
+        abort_unless(auth()->user()?->can('update', $item), 403);
+
+        ProgressoPersonalizado::query()
+            ->where('jovem_id', $this->getRecord()->id)
+            ->where('item_personalizado_id', $itemPersonalizadoId)
+            ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
     }
 }

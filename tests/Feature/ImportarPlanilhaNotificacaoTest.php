@@ -10,7 +10,7 @@ use Livewire\Livewire;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
     $this->ramo = Ramo::create(['nome' => 'Sênior']);
 });
 
@@ -44,7 +44,7 @@ it('mostra notificação de alerta quando algumas linhas sao ignoradas', functio
             'arquivo' => $arquivo,
         ])
         ->call('importar')
-        ->assertNotified('Importação concluída com pendências — confira as linhas ignoradas abaixo');
+        ->assertNotified('Importação concluída com pendências - confira as linhas ignoradas abaixo');
 });
 
 it('mostra notificação de erro quando nenhuma linha e importada', function () {

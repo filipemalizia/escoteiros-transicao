@@ -10,7 +10,7 @@ use Livewire\Livewire;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->admin = User::factory()->create();
+    $this->admin = User::factory()->create(['is_admin' => true]);
     $this->actingAs($this->admin);
 });
 

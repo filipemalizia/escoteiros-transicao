@@ -6,18 +6,58 @@ use App\Models\BlocoNovo;
 use App\Models\CompetenciaAntiga;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
+use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoPersonalizado;
+use Illuminate\Support\Collection;
 
+/**
+ * Registrado como singleton no container (`AppServiceProvider`), pelo mesmo
+ * motivo do `EquivalenciaCreditoService`: a tela de progresso chama
+ * `statusBloco()`/`statusCompetencia()` pra CADA bloco/competência a partir
+ * de vários métodos diferentes na mesma renderização (resumo, percentual,
+ * pendências, etapa, elegibilidade ao Reconhecimento — cada um percorre
+ * todos os blocos de novo). Sem cache aqui, cada bloco/competência era
+ * recalculado de 3 a 5 vezes por página.
+ */
 class StatusProgressaoService
 {
+    /** @var array<string, array<string, mixed>> */
+    private array $cacheStatusCompetencia = [];
+
+    /** @var array<string, array<string, mixed>> */
+    private array $cacheStatusBloco = [];
+
     public function __construct(
         private readonly EquivalenciaCreditoService $creditoService = new EquivalenciaCreditoService,
     ) {}
 
     /**
+     * Esquece todo o cache memoizado (o próprio e o do
+     * {@see EquivalenciaCreditoService} injetado) — chamar sempre que
+     * `concluido` for alterado em `progresso_antigo`/`progresso_novo`.
+     */
+    public function limparCache(): void
+    {
+        $this->cacheStatusCompetencia = [];
+        $this->cacheStatusBloco = [];
+        $this->creditoService->limparCache();
+    }
+
+    /**
      * @return array{status: string, itens_necessarios: int, itens_concluidos: int}
      */
     public function statusCompetencia(Jovem $jovem, CompetenciaAntiga $competencia): array
+    {
+        $chaveCache = "{$jovem->id}:{$competencia->id}";
+
+        return $this->cacheStatusCompetencia[$chaveCache] ??= $this->calcularStatusCompetencia($jovem, $competencia);
+    }
+
+    /**
+     * @return array{status: string, itens_necessarios: int, itens_concluidos: int}
+     */
+    private function calcularStatusCompetencia(Jovem $jovem, CompetenciaAntiga $competencia): array
     {
         $itens = $competencia->itens;
         $itensNecessarios = $itens->count();
@@ -41,9 +81,19 @@ class StatusProgressaoService
     }
 
     /**
-     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, substitutiva_concluida: bool}
+     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, variaveis_concluidas_via_personalizado: int, substitutiva_concluida: bool}
      */
     public function statusBloco(Jovem $jovem, BlocoNovo $bloco): array
+    {
+        $chaveCache = "{$jovem->id}:{$bloco->id}";
+
+        return $this->cacheStatusBloco[$chaveCache] ??= $this->calcularStatusBloco($jovem, $bloco);
+    }
+
+    /**
+     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, variaveis_concluidas_via_personalizado: int, substitutiva_concluida: bool}
+     */
+    private function calcularStatusBloco(Jovem $jovem, BlocoNovo $bloco): array
     {
         $itens = $bloco->itens;
 
@@ -73,6 +123,19 @@ class StatusProgressaoService
 
         $variaveisConcluidas += $variaveisConcluidasViaBloco;
 
+        /**
+         * Itens "Variável" avulsos criados por um adulto pra esse jovem
+         * específico (não fazem parte do catálogo oficial — ver
+         * ItemPersonalizado) contam igual a um item Variável comum.
+         */
+        $itensPersonalizadosDoJovem = $this->itensPersonalizadosDoBloco($jovem, $bloco);
+
+        $variaveisConcluidasPersonalizadas = $itensPersonalizadosDoJovem
+            ->filter(fn (ItemPersonalizado $item) => $this->itemPersonalizadoConcluido($jovem, $item))
+            ->count();
+
+        $variaveisConcluidas += $variaveisConcluidasPersonalizadas;
+
         $substitutivaConcluida = $substitutivas->contains($itemConcluido);
 
         $obrigatoriasSatisfeitas = $obrigatoriasNecessarias === 0 || $obrigatoriasConcluidas === $obrigatoriasNecessarias;
@@ -94,6 +157,7 @@ class StatusProgressaoService
             'variaveis_necessarias' => $variaveisNecessarias,
             'variaveis_concluidas' => $variaveisConcluidas,
             'variaveis_concluidas_via_bloco' => $variaveisConcluidasViaBloco,
+            'variaveis_concluidas_via_personalizado' => $variaveisConcluidasPersonalizadas,
             'substitutiva_concluida' => $substitutivaConcluida,
         ];
     }
@@ -203,7 +267,7 @@ class StatusProgressaoService
     }
 
     /**
-     * @return array<int, array{bloco: BlocoNovo, status: string, detalhe: string, obrigatorias_pendentes: array<int, ItemNovo>, variaveis_pendentes: array<int, ItemNovo>}>
+     * @return array<int, array{bloco: BlocoNovo, status: string, detalhe: string, obrigatorias_pendentes: array<int, ItemNovo>, variaveis_pendentes: array<int, ItemNovo|ItemPersonalizado>}>
      */
     public function pendenciasNovo(Jovem $jovem): array
     {
@@ -257,14 +321,15 @@ class StatusProgressaoService
 
             // Só lista as Variáveis pendentes se o bloco ainda não atingiu o
             // mínimo exigido — se já atingiu, itens Variável restantes não
-            // fazem mais falta.
+            // fazem mais falta. Itens personalizados pendentes desse jovem
+            // entram na mesma lista — contam como Ação Variável igualzinho
+            // (ver StatusProgressaoService::statusBloco()).
             $variaveisPendentes = $variaveisSatisfeitas
                 ? []
-                : $bloco->itens
-                    ->where('tipo_acao', 'Variável')
-                    ->filter($itemPendente)
-                    ->values()
-                    ->all();
+                : [
+                    ...$bloco->itens->where('tipo_acao', 'Variável')->filter($itemPendente)->values()->all(),
+                    ...$this->itensPersonalizadosPendentes($jovem, $bloco),
+                ];
 
             $pendencias[] = [
                 'bloco' => $bloco,
@@ -279,12 +344,44 @@ class StatusProgressaoService
     }
 
     /**
+     * @return Collection<int, ItemPersonalizado>
+     */
+    private function itensPersonalizadosDoBloco(Jovem $jovem, BlocoNovo $bloco): Collection
+    {
+        return ItemPersonalizado::query()
+            ->where('bloco_novo_id', $bloco->id)
+            ->whereHas('jovens', fn ($query) => $query->where('jovens.id', $jovem->id))
+            ->get();
+    }
+
+    private function itemPersonalizadoConcluido(Jovem $jovem, ItemPersonalizado $item): bool
+    {
+        return ProgressoPersonalizado::query()
+            ->where('jovem_id', $jovem->id)
+            ->where('item_personalizado_id', $item->id)
+            ->where('concluido', true)
+            ->exists();
+    }
+
+    /**
+     * @return array<int, ItemPersonalizado>
+     */
+    private function itensPersonalizadosPendentes(Jovem $jovem, BlocoNovo $bloco): array
+    {
+        return $this->itensPersonalizadosDoBloco($jovem, $bloco)
+            ->reject(fn (ItemPersonalizado $item) => $this->itemPersonalizadoConcluido($jovem, $item))
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<int, ItemAntigo>
      */
     public function pendenciasAntigo(Jovem $jovem): array
     {
         $itens = ItemAntigo::query()
             ->whereHas('competencia.areaDesenvolvimento', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
+            ->with('competencia')
             ->get();
 
         return $itens

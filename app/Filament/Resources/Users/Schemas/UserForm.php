@@ -2,7 +2,9 @@
 
 namespace App\Filament\Resources\Users\Schemas;
 
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Hash;
 
@@ -31,6 +33,15 @@ class UserForm
                     ->dehydrateStateUsing(fn (string $state) => Hash::make($state))
                     ->maxLength(255)
                     ->helperText(fn (string $operation) => $operation === 'create' ? null : 'Deixe em branco para manter a senha atual.'),
+                Toggle::make('is_admin')
+                    ->label('Administrador')
+                    ->helperText('Administradores enxergam e gerenciam jovens de todas as equipes.'),
+                Select::make('equipes')
+                    ->label('Equipes')
+                    ->relationship('equipes', 'nome')
+                    ->multiple()
+                    ->preload()
+                    ->helperText('Equipes que este usuário pode ver e avaliar (ignorado para administradores).'),
             ]);
     }
 }

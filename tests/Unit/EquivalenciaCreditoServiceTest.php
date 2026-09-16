@@ -44,7 +44,12 @@ function criarItemNovo(BlocoNovo $bloco, string $codigo, string $tipo = 'Obrigat
     return ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => $codigo, 'descricao' => $codigo, 'tipo_acao' => $tipo]);
 }
 
-function marcarAntigo(Jovem $jovem, ItemAntigo $item): void
+/**
+ * Marca um item antigo como concluído direto e esquece o cache do serviço
+ * (o serviço é memoizado por performance — ver EquivalenciaCreditoService —
+ * e nos testes reusamos a mesma instância antes/depois da mudança).
+ */
+function marcarAntigo(Jovem $jovem, ItemAntigo $item, EquivalenciaCreditoService $service): void
 {
     ProgressoAntigo::create([
         'jovem_id' => $jovem->id,
@@ -52,9 +57,11 @@ function marcarAntigo(Jovem $jovem, ItemAntigo $item): void
         'concluido' => true,
         'data_conclusao' => today(),
     ]);
+
+    $service->limparCache();
 }
 
-function marcarNovo(Jovem $jovem, ItemNovo $item): void
+function marcarNovo(Jovem $jovem, ItemNovo $item, EquivalenciaCreditoService $service): void
 {
     ProgressoNovo::create([
         'jovem_id' => $jovem->id,
@@ -62,6 +69,8 @@ function marcarNovo(Jovem $jovem, ItemNovo $item): void
         'concluido' => true,
         'data_conclusao' => today(),
     ]);
+
+    $service->limparCache();
 }
 
 it('1-1: antigo concluido credita o novo correspondente, e vice-versa', function () {
@@ -72,7 +81,7 @@ it('1-1: antigo concluido credita o novo correspondente, e vice-versa', function
 
     expect($this->service->itemNovoConcluido($this->jovem, $novo))->toBeFalse();
 
-    marcarAntigo($this->jovem, $antigo);
+    marcarAntigo($this->jovem, $antigo, $this->service);
 
     expect($this->service->itemNovoConcluido($this->jovem, $novo))->toBeTrue();
 
@@ -83,7 +92,7 @@ it('1-1: antigo concluido credita o novo correspondente, e vice-versa', function
 
     expect($this->service->itemAntigoConcluido($this->jovem, $antigo2))->toBeFalse();
 
-    marcarNovo($this->jovem, $novo2);
+    marcarNovo($this->jovem, $novo2, $this->service);
 
     expect($this->service->itemAntigoConcluido($this->jovem, $antigo2))->toBeTrue();
 });
@@ -96,11 +105,11 @@ it('N-1: precisa de TODOS os antigos mapeados pro mesmo novo para creditar o nov
     Equivalencia::create(['item_antigo_id' => $antigo1->id, 'item_novo_id' => $novo->id, 'tipo_equivalencia' => 'N-1']);
     Equivalencia::create(['item_antigo_id' => $antigo2->id, 'item_novo_id' => $novo->id, 'tipo_equivalencia' => 'N-1']);
 
-    marcarAntigo($this->jovem, $antigo1);
+    marcarAntigo($this->jovem, $antigo1, $this->service);
 
     expect($this->service->itemNovoConcluido($this->jovem, $novo))->toBeFalse();
 
-    marcarAntigo($this->jovem, $antigo2);
+    marcarAntigo($this->jovem, $antigo2, $this->service);
 
     expect($this->service->itemNovoConcluido($this->jovem, $novo))->toBeTrue();
 });
@@ -113,7 +122,7 @@ it('1-N: um antigo credita cada novo individualmente, mas so credita de volta qu
     Equivalencia::create(['item_antigo_id' => $antigo->id, 'item_novo_id' => $novo1->id, 'tipo_equivalencia' => '1-N']);
     Equivalencia::create(['item_antigo_id' => $antigo->id, 'item_novo_id' => $novo2->id, 'tipo_equivalencia' => '1-N']);
 
-    marcarAntigo($this->jovem, $antigo);
+    marcarAntigo($this->jovem, $antigo, $this->service);
 
     // cada novo, individualmente, ja conta como concluido so com o antigo feito
     expect($this->service->itemNovoConcluido($this->jovem, $novo1))->toBeTrue()
@@ -130,11 +139,11 @@ it('1-N: um antigo credita cada novo individualmente, mas so credita de volta qu
     Equivalencia::create(['item_antigo_id' => $antigoIsolado->id, 'item_novo_id' => $novoIsolado1->id, 'tipo_equivalencia' => '1-N']);
     Equivalencia::create(['item_antigo_id' => $antigoIsolado->id, 'item_novo_id' => $novoIsolado2->id, 'tipo_equivalencia' => '1-N']);
 
-    marcarNovo($this->jovem, $novoIsolado1);
+    marcarNovo($this->jovem, $novoIsolado1, $this->service);
 
     expect($this->service->itemAntigoConcluido($this->jovem, $antigoIsolado))->toBeFalse();
 
-    marcarNovo($this->jovem, $novoIsolado2);
+    marcarNovo($this->jovem, $novoIsolado2, $this->service);
 
     expect($this->service->itemAntigoConcluido($this->jovem, $antigoIsolado))->toBeTrue();
 });
@@ -146,8 +155,8 @@ it('sem equivalencia cadastrada: so conta como concluido se marcado diretamente'
     expect($this->service->itemAntigoConcluido($this->jovem, $antigo))->toBeFalse()
         ->and($this->service->itemNovoConcluido($this->jovem, $novo))->toBeFalse();
 
-    marcarAntigo($this->jovem, $antigo);
-    marcarNovo($this->jovem, $novo);
+    marcarAntigo($this->jovem, $antigo, $this->service);
+    marcarNovo($this->jovem, $novo, $this->service);
 
     expect($this->service->itemAntigoConcluido($this->jovem, $antigo))->toBeTrue()
         ->and($this->service->itemNovoConcluido($this->jovem, $novo))->toBeTrue();

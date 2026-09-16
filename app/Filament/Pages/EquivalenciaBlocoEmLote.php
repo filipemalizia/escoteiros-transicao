@@ -16,16 +16,26 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use UnitEnum;
 
 class EquivalenciaBlocoEmLote extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSquare3Stack3d;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Ferramentas';
+
+    protected static ?int $navigationSort = 10;
 
     protected static ?string $navigationLabel = 'Equivalência de Bloco em Lote';
 
     protected static ?string $title = 'Equivalência de Bloco em Lote';
 
     protected string $view = 'filament.pages.equivalencia-bloco-em-lote';
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->isAdmin() ?? false;
+    }
 
     /** @var array<string, mixed> */
     public ?array $data = [];
@@ -116,7 +126,7 @@ class EquivalenciaBlocoEmLote extends Page
             return (string) $value;
         }
 
-        return "{$bloco->eixo->nome} — {$bloco->titulo}";
+        return "{$bloco->eixo->nome} - {$bloco->titulo}";
     }
 
     protected static function labelItemAntigo(mixed $value, ?ItemAntigo $item = null): string

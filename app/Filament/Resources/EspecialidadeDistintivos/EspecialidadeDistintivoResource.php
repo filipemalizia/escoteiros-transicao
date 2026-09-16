@@ -13,12 +13,17 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use UnitEnum;
 
 class EspecialidadeDistintivoResource extends Resource
 {
     protected static ?string $model = EspecialidadeDistintivo::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Ferramentas';
+
+    protected static ?int $navigationSort = 60;
 
     protected static ?string $modelLabel = 'Especialidade/Distintivo';
 

@@ -27,6 +27,11 @@ class BlocoNovo extends Model
         return $this->hasMany(EquivalenciaBloco::class, 'bloco_novo_id');
     }
 
+    public function itensPersonalizados(): HasMany
+    {
+        return $this->hasMany(ItemPersonalizado::class, 'bloco_novo_id');
+    }
+
     /**
      * Se apagar, os itens deste bloco (e progresso/equivalências ligadas a
      * eles), além das equivalências de bloco vinculadas, seriam apagados em
@@ -35,6 +40,7 @@ class BlocoNovo extends Model
     public function possuiItensComDadosVinculados(): bool
     {
         return $this->itens->contains(fn (ItemNovo $item) => $item->possuiDadosVinculados())
-            || $this->equivalenciasBloco()->exists();
+            || $this->equivalenciasBloco()->exists()
+            || $this->itensPersonalizados()->exists();
     }
 }
