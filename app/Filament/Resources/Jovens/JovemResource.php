@@ -14,6 +14,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class JovemResource extends Resource
 {
@@ -21,11 +22,24 @@ class JovemResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
+    protected static ?int $navigationSort = -30;
+
     protected static ?string $modelLabel = 'Jovem';
 
     protected static ?string $pluralModelLabel = 'Jovens';
 
     protected static ?string $slug = 'jovens';
+
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
+
+        if (! auth()->user()?->isAdmin()) {
+            $query->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? []);
+        }
+
+        return $query;
+    }
 
     public static function form(Schema $schema): Schema
     {

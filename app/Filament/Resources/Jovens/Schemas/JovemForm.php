@@ -11,7 +11,9 @@ use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 
 class JovemForm
 {
@@ -21,13 +23,37 @@ class JovemForm
             ->components([
                 TextInput::make('nome')
                     ->required(),
+                TextInput::make('registro')
+                    ->label('Registro Escoteiro')
+                    ->numeric()
+                    ->unique(ignoreRecord: true)
+                    ->helperText('Usado pelo jovem pra acessar o portal público junto com a data de nascimento.'),
                 DatePicker::make('data_nascimento')
                     ->required(),
                 Select::make('ramo_atual_id')
                     ->label('Ramo')
                     ->relationship('ramoAtual', 'nome')
                     ->live()
-                    ->required(),
+                    ->required()
+                    ->afterStateUpdated(fn (Set $set) => $set('equipe_id', null)),
+
+                Select::make('equipe_id')
+                    ->label('Equipe')
+                    ->relationship(
+                        name: 'equipe',
+                        titleAttribute: 'nome',
+                        modifyQueryUsing: function (Builder $query, Get $get) {
+                            $query->where('ramo_id', $get('ramo_atual_id'));
+
+                            if (! auth()->user()?->isAdmin()) {
+                                $query->whereIn('id', auth()->user()?->equipes()->pluck('equipes.id') ?? []);
+                            }
+
+                            return $query;
+                        },
+                    )
+                    ->visible(fn (Get $get) => filled($get('ramo_atual_id')))
+                    ->nullable(),
 
                 Section::make('Requisitos Complementares')
                     ->description('Requisitos que não vêm do checklist de Itens (contadores, insígnias, recomendações).')

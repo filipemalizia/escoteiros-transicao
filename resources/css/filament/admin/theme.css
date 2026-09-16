@@ -2,3 +2,15 @@
 
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
+@source '../../../../resources/views/components/**/*';
+
+/*
+ * Tela de login/simple-page (login admin, editar perfil): o cartão já
+ * existe por padrão no Filament (`.fi-simple-main` já tem bg/ring/shadow/
+ * rounded) — só aumenta o logo aqui (a sidebar usa `brandLogoHeight`
+ * global menor, então precisa de !important pra vencer o style inline do
+ * Filament).
+ */
+.fi-simple-header .fi-logo {
+    height: 125px !important;
+}

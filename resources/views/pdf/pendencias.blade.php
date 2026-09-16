@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <title>Pendências — {{ $jovem->nome }}</title>
+    <title>Pendências - {{ $jovem->nome }}</title>
     <style>
         body {
             font-family: 'DejaVu Sans', sans-serif;
@@ -94,99 +94,103 @@
     </style>
 </head>
 <body>
-    <h1>Pendências — {{ $jovem->nome }}</h1>
+    <h1>Pendências - {{ $jovem->nome }}</h1>
     <p class="subtitulo">
         Ramo: {{ $jovem->ramoAtual->nome }} &nbsp;|&nbsp;
         Gerado em {{ now()->format('d/m/Y H:i') }}
     </p>
 
-    <h2>Programa Antigo</h2>
-    <div class="resumo">
-        <p>Itens concluídos: {{ $resumoAntigo['concluidos'] }} de {{ $resumoAntigo['total'] }} ({{ $resumoAntigo['percentual'] }}%)</p>
-        <p>Itens faltantes: {{ $resumoAntigo['total'] - $resumoAntigo['concluidos'] }}</p>
-    </div>
+    @if ($mostrarAntigo)
+        <h2>Programa Antigo</h2>
+        <div class="resumo">
+            <p>Itens concluídos: {{ $resumoAntigo['concluidos'] }} de {{ $resumoAntigo['total'] }} ({{ $resumoAntigo['percentual'] }}%)</p>
+            <p>Itens faltantes: {{ $resumoAntigo['total'] - $resumoAntigo['concluidos'] }}</p>
+        </div>
 
-    @if (empty($pendenciasAntigo))
-        <p class="vazio">Nenhum item pendente — programa antigo concluído.</p>
-    @else
-        <table>
-            <thead>
-                <tr>
-                    <th>Código</th>
-                    <th>Item</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach ($pendenciasAntigo as $item)
+        @if (empty($pendenciasAntigo))
+            <p class="vazio">Nenhum item pendente - programa antigo concluído.</p>
+        @else
+            <table>
+                <thead>
                     <tr>
-                        <td class="codigo">{{ $item->codigo }}</td>
-                        <td>{{ $item->descricao }}</td>
+                        <th>Código</th>
+                        <th>Item</th>
                     </tr>
-                @endforeach
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach ($pendenciasAntigo as $item)
+                        <tr>
+                            <td class="codigo">{{ $item->codigo }}</td>
+                            <td>{{ $item->descricao }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        @endif
     @endif
 
-    <h2>Programa Novo</h2>
-    <div class="resumo">
-        <p>Blocos concluídos: {{ $resumoNovo['blocos_concluidos'] }} de {{ $resumoNovo['blocos_total'] }}</p>
-        <p>Ações Obrigatórias concluídas: {{ $resumoNovo['obrigatorias_concluidas'] }} de {{ $resumoNovo['obrigatorias_total'] }}</p>
-        <p>Ações Variáveis (dentro do mínimo exigido): {{ $resumoNovo['variaveis_atingidas'] }} de {{ $resumoNovo['variaveis_minimas_total'] }}</p>
-    </div>
+    @if ($mostrarNovo)
+        <h2>Programa Novo</h2>
+        <div class="resumo">
+            <p>Blocos concluídos: {{ $resumoNovo['blocos_concluidos'] }} de {{ $resumoNovo['blocos_total'] }}</p>
+            <p>Ações Obrigatórias concluídas: {{ $resumoNovo['obrigatorias_concluidas'] }} de {{ $resumoNovo['obrigatorias_total'] }}</p>
+            <p>Ações Variáveis (dentro do mínimo exigido): {{ $resumoNovo['variaveis_atingidas'] }} de {{ $resumoNovo['variaveis_minimas_total'] }}</p>
+        </div>
 
-    @if (empty($pendenciasNovo))
-        <p class="vazio">Nenhum bloco pendente — programa novo concluído.</p>
-    @else
-        @foreach ($pendenciasNovo as $pendencia)
-            <h3>{{ $pendencia['bloco']->eixo->nome }} — {{ $pendencia['bloco']->titulo }} ({{ $pendencia['detalhe'] }})</h3>
+        @if (empty($pendenciasNovo))
+            <p class="vazio">Nenhum bloco pendente - programa novo concluído.</p>
+        @else
+            @foreach ($pendenciasNovo as $pendencia)
+                <h3>{{ $pendencia['bloco']->eixo->nome }} - {{ $pendencia['bloco']->titulo }} ({{ $pendencia['detalhe'] }})</h3>
 
-            @if (! empty($pendencia['obrigatorias_pendentes']))
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 70px">Tipo</th>
-                            <th>Código</th>
-                            <th>Ação pendente</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($pendencia['obrigatorias_pendentes'] as $item)
+                @if (! empty($pendencia['obrigatorias_pendentes']))
+                    <table>
+                        <thead>
                             <tr>
-                                <td><span class="badge badge-obrigatoria">Obrigatória</span></td>
-                                <td class="codigo">{{ $item->codigo }}</td>
-                                <td>{{ $item->descricao }}</td>
+                                <th style="width: 70px">Tipo</th>
+                                <th>Código</th>
+                                <th>Ação pendente</th>
                             </tr>
-                        @endforeach
-                        @foreach ($pendencia['variaveis_pendentes'] as $item)
+                        </thead>
+                        <tbody>
+                            @foreach ($pendencia['obrigatorias_pendentes'] as $item)
+                                <tr>
+                                    <td><span class="badge badge-obrigatoria">Obrigatória</span></td>
+                                    <td class="codigo">{{ $item->codigo }}</td>
+                                    <td>{{ $item->descricao }}</td>
+                                </tr>
+                            @endforeach
+                            @foreach ($pendencia['variaveis_pendentes'] as $item)
+                                <tr>
+                                    <td><span class="badge badge-variavel">Variável</span></td>
+                                    <td class="codigo">{{ $item->codigo }}</td>
+                                    <td>{{ $item->descricao }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @elseif (! empty($pendencia['variaveis_pendentes']))
+                    <table>
+                        <thead>
                             <tr>
-                                <td><span class="badge badge-variavel">Variável</span></td>
-                                <td class="codigo">{{ $item->codigo }}</td>
-                                <td>{{ $item->descricao }}</td>
+                                <th style="width: 70px">Tipo</th>
+                                <th>Código</th>
+                                <th>Ação pendente</th>
                             </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @elseif (! empty($pendencia['variaveis_pendentes']))
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 70px">Tipo</th>
-                            <th>Código</th>
-                            <th>Ação pendente</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach ($pendencia['variaveis_pendentes'] as $item)
-                            <tr>
-                                <td><span class="badge badge-variavel">Variável</span></td>
-                                <td class="codigo">{{ $item->codigo }}</td>
-                                <td>{{ $item->descricao }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endif
-        @endforeach
+                        </thead>
+                        <tbody>
+                            @foreach ($pendencia['variaveis_pendentes'] as $item)
+                                <tr>
+                                    <td><span class="badge badge-variavel">Variável</span></td>
+                                    <td class="codigo">{{ $item->codigo }}</td>
+                                    <td>{{ $item->descricao }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                @endif
+            @endforeach
+        @endif
     @endif
 </body>
 </html>

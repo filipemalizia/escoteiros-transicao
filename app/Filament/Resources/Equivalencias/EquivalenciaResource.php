@@ -13,12 +13,17 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use UnitEnum;
 
 class EquivalenciaResource extends Resource
 {
     protected static ?string $model = Equivalencia::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Ferramentas';
+
+    protected static ?int $navigationSort = 50;
 
     protected static ?string $modelLabel = 'Equivalência';
 

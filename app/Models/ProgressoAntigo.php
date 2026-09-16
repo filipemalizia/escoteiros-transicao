@@ -9,11 +9,13 @@ class ProgressoAntigo extends Model
 {
     protected $table = 'progresso_antigo';
 
-    protected $fillable = ['jovem_id', 'item_antigo_id', 'concluido', 'data_conclusao', 'registrado_por_id'];
+    protected $fillable = ['jovem_id', 'item_antigo_id', 'concluido', 'data_conclusao', 'registrado_por_id', 'solicitado_pelo_jovem', 'solicitado_em'];
 
     protected $casts = [
         'concluido' => 'boolean',
         'data_conclusao' => 'date',
+        'solicitado_pelo_jovem' => 'boolean',
+        'solicitado_em' => 'datetime',
     ];
 
     public function jovem(): BelongsTo

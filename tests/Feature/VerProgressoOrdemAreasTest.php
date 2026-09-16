@@ -11,7 +11,7 @@ use Livewire\Livewire;
 uses(RefreshDatabase::class);
 
 it('lista as areas de desenvolvimento antigas na ordem oficial, nao alfabetica', function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
 
     $ramo = Ramo::create(['nome' => 'Sênior']);
     $jovem = Jovem::create([

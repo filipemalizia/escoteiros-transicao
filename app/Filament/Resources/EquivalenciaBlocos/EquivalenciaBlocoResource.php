@@ -13,12 +13,17 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use UnitEnum;
 
 class EquivalenciaBlocoResource extends Resource
 {
     protected static ?string $model = EquivalenciaBloco::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSquare3Stack3d;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Ferramentas';
+
+    protected static ?int $navigationSort = 40;
 
     protected static ?string $modelLabel = 'Equivalência de Bloco';
 

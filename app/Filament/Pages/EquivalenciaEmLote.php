@@ -16,16 +16,26 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use UnitEnum;
 
 class EquivalenciaEmLote extends Page
 {
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSquares2x2;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Ferramentas';
+
+    protected static ?int $navigationSort = 20;
 
     protected static ?string $navigationLabel = 'Nova Equivalência em Lote';
 
     protected static ?string $title = 'Nova Equivalência em Lote';
 
     protected string $view = 'filament.pages.equivalencia-em-lote';
+
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->isAdmin() ?? false;
+    }
 
     /** @var array<string, mixed> */
     public ?array $data = [];

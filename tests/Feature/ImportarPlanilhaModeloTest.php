@@ -8,7 +8,7 @@ use Livewire\Livewire;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
 });
 
 it('baixa o modelo csv do sistema antigo com as colunas esperadas', function () {

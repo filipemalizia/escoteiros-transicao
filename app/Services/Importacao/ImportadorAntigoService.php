@@ -85,7 +85,7 @@ class ImportadorAntigoService
         }
 
         $descricaoFinal = (filled($competencia) && filled($descricaoCompetencia))
-            ? "{$competencia} — {$descricaoCompetencia}"
+            ? "{$competencia} - {$descricaoCompetencia}"
             : ($competencia ?: $descricaoCompetencia);
 
         $observacao = $this->valor($linha, $cabecalho, 'observacao');

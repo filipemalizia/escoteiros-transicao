@@ -13,7 +13,7 @@ use Livewire\Livewire;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
 
     $this->ramo = Ramo::create(['nome' => 'Sênior']);
     $this->jovem = Jovem::create([
@@ -27,8 +27,20 @@ beforeEach(function () {
     ItemAntigo::create(['competencia_id' => $competencia->id, 'codigo' => 'FIS-001', 'descricao' => 'Item pendente']);
 });
 
-it('baixa o pdf de pendencias do jovem', function () {
+it('baixa o pdf de pendencias com os dois programas', function () {
     Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
-        ->callAction('baixarPendenciasPdf')
+        ->callAction('baixarPendenciasPdfTodos')
         ->assertFileDownloaded('pendencias-jovem-de-teste.pdf');
+});
+
+it('baixa o pdf de pendencias so do programa novo', function () {
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->callAction('baixarPendenciasPdfNovo')
+        ->assertFileDownloaded('pendencias-jovem-de-teste-programa-novo.pdf');
+});
+
+it('baixa o pdf de pendencias so do programa antigo', function () {
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->callAction('baixarPendenciasPdfAntigo')
+        ->assertFileDownloaded('pendencias-jovem-de-teste-programa-antigo.pdf');
 });

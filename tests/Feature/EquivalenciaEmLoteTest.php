@@ -16,7 +16,7 @@ use Livewire\Livewire;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
 
     $this->ramo = Ramo::create(['nome' => 'Sênior']);
 
