@@ -17,6 +17,23 @@ class Jovem extends Model
         'data_nascimento' => 'date',
     ];
 
+    /**
+     * Quando a Equipe do jovem muda, o Ramo dele acompanha automaticamente
+     * (uma equipe pertence sempre a um ramo só) — evita o jovem ficar com
+     * Ramo desatualizado depois de ser movido pra uma equipe de outro ramo
+     * (ex.: subiu de Sênior pra Pioneiro). Roda em qualquer caminho que
+     * altere `equipe_id` (form do Jovem, Associar/Criar na Equipe), porque
+     * é um evento do model, não de uma tela específica.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Jovem $jovem) {
+            if ($jovem->isDirty('equipe_id') && $jovem->equipe_id) {
+                $jovem->ramo_atual_id = Equipe::find($jovem->equipe_id)?->ramo_id ?? $jovem->ramo_atual_id;
+            }
+        });
+    }
+
     public function ramoAtual(): BelongsTo
     {
         return $this->belongsTo(Ramo::class, 'ramo_atual_id');
@@ -25,6 +42,16 @@ class Jovem extends Model
     public function equipe(): BelongsTo
     {
         return $this->belongsTo(Equipe::class);
+    }
+
+    /**
+     * Básica/Ar/Mar — herdada da Equipe (uma equipe é sempre de uma
+     * modalidade só). Jovem sem equipe cadastrada cai em 'Básica', o valor
+     * seguro que nunca esconde nem libera item de Ar/Mar por engano.
+     */
+    public function modalidade(): string
+    {
+        return $this->equipe?->modalidade ?? 'Básica';
     }
 
     public function progressoAntigo(): HasMany

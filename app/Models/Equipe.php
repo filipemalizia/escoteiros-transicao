@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Equipe extends Model
 {
-    protected $fillable = ['ramo_id', 'nome'];
+    protected $fillable = ['ramo_id', 'nome', 'modalidade'];
 
     public function ramo(): BelongsTo
     {

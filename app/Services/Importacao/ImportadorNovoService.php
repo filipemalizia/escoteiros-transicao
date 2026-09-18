@@ -92,7 +92,11 @@ class ImportadorNovoService
         }
 
         $intencionalidade = $this->valor($linha, $cabecalho, 'intencionalidade');
-        $modalidade = $this->valor($linha, $cabecalho, 'modalidade') ?: 'Geral';
+        // 'Geral' era o nome antigo do valor 'Básica' (planilhas anteriores
+        // podem ainda usar o termo antigo) — normaliza os dois pro mesmo
+        // valor, junto com célula em branco.
+        $modalidadeBruta = $this->valor($linha, $cabecalho, 'modalidade');
+        $modalidade = in_array($modalidadeBruta, [null, '', 'Geral'], true) ? 'Básica' : $modalidadeBruta;
         $observacao = $this->valor($linha, $cabecalho, 'requisitos');
         $quantidadeMinima = $this->extrairQuantidadeMinima($tipoAcao, $observacao);
         $especialidadeInfo = $this->extrairEspecialidade($tipoAcao, $acao);

@@ -18,6 +18,14 @@ class EquipeForm
                     ->required(),
                 TextInput::make('nome')
                     ->required(),
+                Select::make('modalidade')
+                    ->options([
+                        'Básica' => 'Básica',
+                        'Ar' => 'Ar',
+                        'Mar' => 'Mar',
+                    ])
+                    ->default('Básica')
+                    ->required(),
                 Select::make('usuarios')
                     ->label('Usuários responsáveis')
                     ->relationship('usuarios', 'name')

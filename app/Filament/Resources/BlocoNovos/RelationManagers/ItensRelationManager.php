@@ -15,6 +15,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -43,11 +44,11 @@ class ItensRelationManager extends RelationManager
                     ->required(),
                 Select::make('modalidade')
                     ->options([
-                        'Geral' => 'Geral',
+                        'Básica' => 'Básica',
                         'Ar' => 'Ar',
                         'Mar' => 'Mar',
                     ])
-                    ->default('Geral'),
+                    ->default('Básica'),
                 Select::make('especialidade_id')
                     ->label('Especialidade/Distintivo')
                     ->relationship('especialidade', 'nome')
@@ -79,12 +80,19 @@ class ItensRelationManager extends RelationManager
                 TextColumn::make('tipo_acao')
                     ->label('Tipo')
                     ->badge(),
-                TextColumn::make('modalidade'),
+                TextColumn::make('modalidade')
+                    ->badge()
+                    ->color(fn (string $state) => $state === 'Básica' ? 'gray' : 'warning'),
                 TextColumn::make('especialidade.nome')
                     ->label('Especialidade/Distintivo'),
             ])
             ->filters([
-                //
+                SelectFilter::make('modalidade')
+                    ->options([
+                        'Básica' => 'Básica',
+                        'Ar' => 'Ar',
+                        'Mar' => 'Mar',
+                    ]),
             ])
             ->headerActions([
                 CreateAction::make(),

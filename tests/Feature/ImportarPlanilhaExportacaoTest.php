@@ -50,7 +50,7 @@ it('baixa a progressao novo cadastrada do ramo selecionado', function () {
         'codigo' => 'B1-001',
         'descricao' => 'Fazer uma trilha',
         'tipo_acao' => 'Obrigatória',
-        'modalidade' => 'Geral',
+        'modalidade' => 'Básica',
     ]);
 
     Livewire::test(ImportarPlanilha::class)
