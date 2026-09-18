@@ -5,11 +5,20 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ProgressoNovo extends Model
+class ProgressoEspecialidade extends Model
 {
-    protected $table = 'progresso_novo';
+    protected $table = 'progresso_especialidade';
 
-    protected $fillable = ['jovem_id', 'item_novo_id', 'concluido', 'data_conclusao', 'registrado_por_id', 'solicitado_pelo_jovem', 'solicitado_em', 'observacao_jovem'];
+    protected $fillable = [
+        'jovem_id',
+        'especialidade_distintivo_item_id',
+        'concluido',
+        'data_conclusao',
+        'registrado_por_id',
+        'solicitado_pelo_jovem',
+        'solicitado_em',
+        'observacao_jovem',
+    ];
 
     protected $casts = [
         'concluido' => 'boolean',
@@ -23,9 +32,9 @@ class ProgressoNovo extends Model
         return $this->belongsTo(Jovem::class);
     }
 
-    public function itemNovo(): BelongsTo
+    public function item(): BelongsTo
     {
-        return $this->belongsTo(ItemNovo::class);
+        return $this->belongsTo(EspecialidadeDistintivoItem::class, 'especialidade_distintivo_item_id');
     }
 
     public function registradoPor(): BelongsTo

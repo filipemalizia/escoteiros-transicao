@@ -4,8 +4,10 @@ use App\Filament\Widgets\EstatisticasOverview;
 use App\Models\BlocoNovo;
 use App\Models\EixoNovo;
 use App\Models\Equipe;
+use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemNovo;
 use App\Models\Jovem;
+use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\Ramo;
 use App\Models\User;
@@ -92,4 +94,33 @@ it('admin ve os itens aguardando avaliacao de todas as equipes', function () {
     ));
 
     expect((fn () => $this->value)->call($statAvaliacoes))->toBe(2);
+});
+
+it('conta solicitacoes de especialidade no total de itens aguardando avaliacao', function () {
+    $ramo = Ramo::create(['nome' => 'Lobinho']);
+    $jovem = Jovem::create(['nome' => 'Jovem A', 'data_nascimento' => '2015-01-01', 'ramo_atual_id' => $ramo->id]);
+
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade', 'estrutura' => 'itens_niveis']);
+    $grupo = $especialidade->grupos()->create(['chave' => 'itens']);
+    $item = $grupo->itens()->create(['texto' => 'Montar barraca']);
+
+    ProgressoEspecialidade::create([
+        'jovem_id' => $jovem->id,
+        'especialidade_distintivo_item_id' => $item->id,
+        'concluido' => false,
+        'solicitado_pelo_jovem' => true,
+        'solicitado_em' => now(),
+    ]);
+
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
+
+    $stats = (new ReflectionMethod(EstatisticasOverview::class, 'getStats'))
+        ->invoke(new EstatisticasOverview);
+
+    $statAvaliacoes = collect($stats)->first(fn ($stat) => str_contains(
+        (fn () => $this->label)->call($stat),
+        'Aguardando Avaliação'
+    ));
+
+    expect((fn () => $this->value)->call($statAvaliacoes))->toBe(1);
 });

@@ -5,9 +5,12 @@ namespace App\Filament\Resources\Jovens\Pages;
 use App\Concerns\ExibeProgressoDoJovem;
 use App\Filament\Resources\Jovens\JovemResource;
 use App\Models\BlocoNovo;
+use App\Models\EspecialidadeDistintivoItem;
+use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
 use App\Models\ProgressoAntigo;
+use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
 use App\Services\StatusProgressaoService;
@@ -40,6 +43,15 @@ class VerProgresso extends Page
 
     /** @var array<int, int> */
     public array $novoItemPersonalizadoOutrosJovensIds = [];
+
+    /**
+     * Tipo ('novo'|'personalizado'|'especialidade') e item cujo modal de
+     * avaliação (Aprovar/Recusar a solicitação do jovem) está aberto no
+     * momento (null = nenhum).
+     */
+    public ?string $avaliandoTipo = null;
+
+    public ?int $avaliandoItemId = null;
 
     public function mount(int|string $record): void
     {
@@ -214,6 +226,8 @@ class VerProgresso extends Page
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
+
+        $this->fecharAvaliacao();
     }
 
     public function rejeitarAntigo(int $itemAntigoId): void
@@ -230,6 +244,113 @@ class VerProgresso extends Page
             ->where('jovem_id', $this->getRecord()->id)
             ->where('item_novo_id', $itemNovoId)
             ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+
+        $this->fecharAvaliacao();
+    }
+
+    public function toggleEspecialidade(int $especialidadeDistintivoItemId): void
+    {
+        $progresso = ProgressoEspecialidade::query()->firstOrNew([
+            'jovem_id' => $this->getRecord()->id,
+            'especialidade_distintivo_item_id' => $especialidadeDistintivoItemId,
+        ]);
+
+        $concluido = ! $progresso->concluido;
+
+        $progresso->concluido = $concluido;
+        $progresso->data_conclusao = $concluido ? Carbon::today() : null;
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    public function confirmarEspecialidade(int $especialidadeDistintivoItemId): void
+    {
+        $progresso = ProgressoEspecialidade::query()->firstOrNew([
+            'jovem_id' => $this->getRecord()->id,
+            'especialidade_distintivo_item_id' => $especialidadeDistintivoItemId,
+        ]);
+
+        $progresso->concluido = true;
+        $progresso->data_conclusao = Carbon::today();
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+
+        $this->fecharAvaliacao();
+    }
+
+    public function rejeitarEspecialidade(int $especialidadeDistintivoItemId): void
+    {
+        ProgressoEspecialidade::query()
+            ->where('jovem_id', $this->getRecord()->id)
+            ->where('especialidade_distintivo_item_id', $especialidadeDistintivoItemId)
+            ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+
+        $this->fecharAvaliacao();
+    }
+
+    public function abrirAvaliacao(string $tipo, int $itemId): void
+    {
+        $this->avaliandoTipo = $tipo;
+        $this->avaliandoItemId = $itemId;
+    }
+
+    public function fecharAvaliacao(): void
+    {
+        $this->avaliandoTipo = null;
+        $this->avaliandoItemId = null;
+    }
+
+    /**
+     * Item (de qualquer um dos 3 tipos) cujo modal de avaliação está aberto
+     * no momento — usado pelo modal pra mostrar o texto do item sem a view
+     * precisar saber o tipo.
+     */
+    public function getItemParaAvaliar(): ItemNovo|ItemPersonalizado|EspecialidadeDistintivoItem|null
+    {
+        if (! $this->avaliandoTipo || ! $this->avaliandoItemId) {
+            return null;
+        }
+
+        return match ($this->avaliandoTipo) {
+            'novo' => ItemNovo::find($this->avaliandoItemId),
+            'personalizado' => ItemPersonalizado::find($this->avaliandoItemId),
+            'especialidade' => EspecialidadeDistintivoItem::find($this->avaliandoItemId),
+            default => null,
+        };
+    }
+
+    /**
+     * Despacha pro método de confirmar/rejeitar certo, de acordo com o
+     * tipo do item cujo modal está aberto — usado pelos botões únicos
+     * "Aprovar"/"Recusar" do modal, que não sabem (nem precisam saber)
+     * qual tipo é.
+     */
+    public function confirmarAvaliacaoAtual(): void
+    {
+        match ($this->avaliandoTipo) {
+            'novo' => $this->confirmarNovo($this->avaliandoItemId),
+            'personalizado' => $this->confirmarItemPersonalizado($this->avaliandoItemId),
+            'especialidade' => $this->confirmarEspecialidade($this->avaliandoItemId),
+            default => null,
+        };
+    }
+
+    public function rejeitarAvaliacaoAtual(): void
+    {
+        match ($this->avaliandoTipo) {
+            'novo' => $this->rejeitarNovo($this->avaliandoItemId),
+            'personalizado' => $this->rejeitarItemPersonalizado($this->avaliandoItemId),
+            'especialidade' => $this->rejeitarEspecialidade($this->avaliandoItemId),
+            default => null,
+        };
     }
 
     /**
@@ -351,6 +472,8 @@ class VerProgresso extends Page
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
+
+        $this->fecharAvaliacao();
     }
 
     public function rejeitarItemPersonalizado(int $itemPersonalizadoId): void
@@ -363,5 +486,7 @@ class VerProgresso extends Page
             ->where('jovem_id', $this->getRecord()->id)
             ->where('item_personalizado_id', $itemPersonalizadoId)
             ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+
+        $this->fecharAvaliacao();
     }
 }

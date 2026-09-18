@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use App\Models\Equipe;
 use App\Models\Jovem;
 use App\Models\ProgressoAntigo;
+use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
 use App\Models\Ramo;
@@ -58,7 +59,8 @@ class EstatisticasOverview extends StatsOverviewWidget
 
         $total = ProgressoAntigo::query()->whereIn('jovem_id', $jovemIds)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
             + ProgressoNovo::query()->whereIn('jovem_id', $jovemIds)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
-            + ProgressoPersonalizado::query()->whereIn('jovem_id', $jovemIds)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count();
+            + ProgressoPersonalizado::query()->whereIn('jovem_id', $jovemIds)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
+            + ProgressoEspecialidade::query()->whereIn('jovem_id', $jovemIds)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count();
 
         return Stat::make('Itens Aguardando Avaliação', $total)
             ->description($user?->isAdmin() ? 'Em todas as equipes' : 'Nas suas equipes')

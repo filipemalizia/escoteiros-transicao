@@ -161,6 +161,33 @@ it('lider confirma uma solicitacao de item personalizado', function () {
         ->and($progresso->solicitado_pelo_jovem)->toBeFalse();
 });
 
+it('lider aprova uma solicitacao de item personalizado pelo modal generico de avaliacao', function () {
+    $item = ItemPersonalizado::create(['bloco_novo_id' => $this->bloco->id, 'descricao' => 'Extra', 'criado_por_id' => $this->lider->id]);
+    $item->jovens()->attach($this->jovem->id);
+
+    ProgressoPersonalizado::create([
+        'jovem_id' => $this->jovem->id,
+        'item_personalizado_id' => $item->id,
+        'concluido' => false,
+        'solicitado_pelo_jovem' => true,
+        'solicitado_em' => now(),
+        'observacao_jovem' => 'Já pratiquei bastante.',
+    ]);
+
+    $this->actingAs($this->lider);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->call('abrirAvaliacao', 'personalizado', $item->id)
+        ->assertSee('Já pratiquei bastante.')
+        ->call('confirmarAvaliacaoAtual')
+        ->assertSet('avaliandoItemId', null);
+
+    $progresso = ProgressoPersonalizado::where('item_personalizado_id', $item->id)->first();
+
+    expect($progresso->concluido)->toBeTrue()
+        ->and($progresso->solicitado_pelo_jovem)->toBeFalse();
+});
+
 it('lider sem acesso a nenhum jovem vinculado nao pode gerenciar o item personalizado', function () {
     $item = ItemPersonalizado::create(['bloco_novo_id' => $this->bloco->id, 'descricao' => 'Extra', 'criado_por_id' => $this->lider->id]);
     $item->jovens()->attach($this->jovemDeOutraEquipe->id);

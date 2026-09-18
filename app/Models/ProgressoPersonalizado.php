@@ -17,6 +17,7 @@ class ProgressoPersonalizado extends Model
         'registrado_por_id',
         'solicitado_pelo_jovem',
         'solicitado_em',
+        'observacao_jovem',
     ];
 
     protected $casts = [
