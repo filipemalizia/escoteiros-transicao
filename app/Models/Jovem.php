@@ -11,10 +11,11 @@ class Jovem extends Model
 {
     protected $table = 'jovens';
 
-    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id'];
+    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id', 'portal_visitado_em'];
 
     protected $casts = [
         'data_nascimento' => 'date',
+        'portal_visitado_em' => 'datetime',
     ];
 
     /**
