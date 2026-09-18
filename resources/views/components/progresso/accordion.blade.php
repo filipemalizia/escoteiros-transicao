@@ -7,6 +7,9 @@
     'meta' => null,
     'pendencia' => null,
     'avaliacoesPendentes' => 0,
+    'comImagem' => false,
+    'imagemUrl' => null,
+    'imagemColorida' => false,
 ])
 
 {{--
@@ -26,19 +29,25 @@
     }}
 >
     <button type="button" x-on:click="open = ! open" class="flex w-full items-start justify-between gap-3 text-left">
-        <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
-            @if ($status)
-                <x-progresso.badge :color="$statusColor">{{ $status }}</x-progresso.badge>
+        <span class="flex flex-1 items-center gap-3">
+            @if ($comImagem)
+                <x-progresso.imagem-badge :url="$imagemUrl" :colorida="$imagemColorida" :alt="$heading" size="h-12 w-12" />
             @endif
-            <span class="text-sm font-semibold text-gray-950 dark:text-white">{{ $heading }}</span>
-            @if ($meta)
-                <span class="text-sm font-normal text-gray-500 dark:text-gray-400">{{ $meta }}</span>
-            @endif
-            @if ($avaliacoesPendentes > 0)
-                <x-progresso.badge color="warning">
-                    🔔 {{ $avaliacoesPendentes }} {{ $avaliacoesPendentes === 1 ? 'item aguardando avaliação' : 'itens aguardando avaliação' }}
-                </x-progresso.badge>
-            @endif
+
+            <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                @if ($status)
+                    <x-progresso.badge :color="$statusColor">{{ $status }}</x-progresso.badge>
+                @endif
+                <span class="text-sm font-semibold text-gray-950 dark:text-white">{{ $heading }}</span>
+                @if ($meta)
+                    <span class="text-sm font-normal text-gray-500 dark:text-gray-400">{{ $meta }}</span>
+                @endif
+                @if ($avaliacoesPendentes > 0)
+                    <x-progresso.badge color="warning">
+                        🔔 {{ $avaliacoesPendentes }} {{ $avaliacoesPendentes === 1 ? 'item aguardando avaliação' : 'itens aguardando avaliação' }}
+                    </x-progresso.badge>
+                @endif
+            </span>
         </span>
         <x-filament::icon
             icon="heroicon-o-chevron-down"

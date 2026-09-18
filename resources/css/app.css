@@ -2,8 +2,28 @@
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
+@source '../../app/Livewire/**/*.php';
 
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /*
+     * Mesma paleta 'primary' (azul marinho da marca, #2E3192) configurada em
+     * AdminPanelProvider::colors() — duplicada aqui porque o portal usa um
+     * bundle Tailwind separado do admin (não carrega o CSS do Filament), sem
+     * acesso às cores semânticas do painel.
+     */
+    --color-primary-50: #F3F4FB;
+    --color-primary-100: #E4E4F6;
+    --color-primary-200: #C5C6ED;
+    --color-primary-300: #9A9CDF;
+    --color-primary-400: #6467CE;
+    --color-primary-500: #383CB2;
+    --color-primary-600: #2E3192;
+    --color-primary-700: #222474;
+    --color-primary-800: #1A1C59;
+    --color-primary-900: #12143E;
+    --color-primary-950: #0C0D2A;
 }

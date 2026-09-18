@@ -2,13 +2,21 @@
 
 namespace App\Services;
 
+use App\Concerns\ExibeProgressoDoJovem;
 use App\Models\BlocoNovo;
 use App\Models\CompetenciaAntiga;
+use App\Models\EixoNovo;
+use App\Models\EspecialidadeDistintivo;
+use App\Models\EspecialidadeDistintivoGrupo;
+use App\Models\EspecialidadeDistintivoItem;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoEspecialidade;
+use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -28,6 +36,21 @@ class StatusProgressaoService
     /** @var array<string, array<string, mixed>> */
     private array $cacheStatusBloco = [];
 
+    /** @var array<string, array<string, mixed>> */
+    private array $cacheStatusEspecialidade = [];
+
+    /** @var array<int, array<int, int>> */
+    private array $cacheItensEspecialidadeConcluidos = [];
+
+    /** @var array<int, array<int, Carbon>> */
+    private array $cacheDatasItensEspecialidadeConcluidos = [];
+
+    /** @var array<int, array<int, Carbon>> */
+    private array $cacheDatasItensNovosConcluidos = [];
+
+    /** @var array<int, array<int, Carbon>> */
+    private array $cacheDatasItensPersonalizadosConcluidos = [];
+
     public function __construct(
         private readonly EquivalenciaCreditoService $creditoService = new EquivalenciaCreditoService,
     ) {}
@@ -41,6 +64,11 @@ class StatusProgressaoService
     {
         $this->cacheStatusCompetencia = [];
         $this->cacheStatusBloco = [];
+        $this->cacheStatusEspecialidade = [];
+        $this->cacheItensEspecialidadeConcluidos = [];
+        $this->cacheDatasItensEspecialidadeConcluidos = [];
+        $this->cacheDatasItensNovosConcluidos = [];
+        $this->cacheDatasItensPersonalizadosConcluidos = [];
         $this->creditoService->limparCache();
     }
 
@@ -91,11 +119,42 @@ class StatusProgressaoService
     }
 
     /**
+     * Ordem de exibição por tipo de ação dentro de um bloco — Substitutiva
+     * fica por último de propósito (é um "atalho" alternativo às Variáveis,
+     * não a ação principal do bloco); itens Personalizados (que não são
+     * `ItemNovo`, ficam numa seção à parte na view) entram entre Variável e
+     * Substitutiva nessa mesma ordem.
+     */
+    private const ORDEM_TIPO_ACAO = ['Obrigatória' => 1, 'Variável' => 2, 'Substitutiva' => 4];
+
+    /**
+     * Itens do bloco que fazem sentido pra modalidade deste jovem — 'Básica'
+     * é visível pra todo mundo, 'Ar'/'Mar' só pra quem é daquela modalidade
+     * (herdada da Equipe, ver `Jovem::modalidade()`). Usado tanto no cálculo
+     * de status/pendências quanto nas telas (portal e painel do chefe), pra
+     * um jovem fora da modalidade nunca ver nem ter contado contra ele um
+     * item que não se aplica. Vem ordenado por tipo de ação e, dentro de
+     * cada tipo, pelo código.
+     *
+     * @return Collection<int, ItemNovo>
+     */
+    public function itensVisiveisDoBloco(Jovem $jovem, BlocoNovo $bloco): Collection
+    {
+        return $bloco->itens
+            ->filter(fn (ItemNovo $item) => in_array($item->modalidade, ['Básica', $jovem->modalidade()], true))
+            ->sortBy([
+                fn (ItemNovo $a, ItemNovo $b) => (self::ORDEM_TIPO_ACAO[$a->tipo_acao] ?? 99) <=> (self::ORDEM_TIPO_ACAO[$b->tipo_acao] ?? 99),
+                fn (ItemNovo $a, ItemNovo $b) => $a->codigo <=> $b->codigo,
+            ])
+            ->values();
+    }
+
+    /**
      * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, variaveis_concluidas_via_personalizado: int, substitutiva_concluida: bool}
      */
     private function calcularStatusBloco(Jovem $jovem, BlocoNovo $bloco): array
     {
-        $itens = $bloco->itens;
+        $itens = $this->itensVisiveisDoBloco($jovem, $bloco);
 
         $obrigatorias = $itens->where('tipo_acao', 'Obrigatória');
         $variaveis = $itens->where('tipo_acao', 'Variável');
@@ -163,6 +222,125 @@ class StatusProgressaoService
     }
 
     /**
+     * Status de uma Especialidade/Insígnia pro jovem. `nivel_atingido` só
+     * faz sentido pra estrutura `itens_niveis` (Lobinho/Escoteiro) — os
+     * itens não são marcados por nível, é uma contagem cumulativa sobre a
+     * mesma lista ("concluir quatro pra nível 1, oito pra nível 2"). Pra
+     * `atividades_temas` (Sênior/Pioneiro) não tem nível, é tudo-ou-nada:
+     * conquistada quando todos os grupos (conhecer/fazer/compartilhar)
+     * estiverem satisfeitos.
+     *
+     * @return array{status: string, nivel_atingido: int|null, itens_concluidos: int, itens_totais: int, grupos: array<int, array{grupo: EspecialidadeDistintivoGrupo, concluidos: int, necessarios: int, necessarios_totais: int, satisfeito: bool}>}
+     */
+    public function statusEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade): array
+    {
+        $chaveCache = "{$jovem->id}:{$especialidade->id}";
+
+        return $this->cacheStatusEspecialidade[$chaveCache] ??= $this->calcularStatusEspecialidade($jovem, $especialidade);
+    }
+
+    /**
+     * @return array{status: string, nivel_atingido: int|null, itens_concluidos: int, itens_totais: int, grupos: array<int, array{grupo: EspecialidadeDistintivoGrupo, concluidos: int, necessarios: int, necessarios_totais: int, satisfeito: bool}>}
+     */
+    private function calcularStatusEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade): array
+    {
+        $gruposStatus = $especialidade->grupos->map(fn (EspecialidadeDistintivoGrupo $grupo) => [
+            'grupo' => $grupo,
+            ...$this->statusGrupoEspecialidade($jovem, $grupo),
+        ]);
+
+        if ($especialidade->estrutura === 'itens_niveis') {
+            $grupoItens = $gruposStatus->firstWhere('grupo.chave', 'itens');
+            $itensConcluidos = $grupoItens['concluidos'] ?? 0;
+            $itensTotais = $grupoItens['necessarios_totais'] ?? 0;
+
+            $nivelAtingido = match (true) {
+                $especialidade->minimo_nivel_2 !== null && $itensConcluidos >= $especialidade->minimo_nivel_2 => 2,
+                $especialidade->minimo_nivel_1 !== null && $itensConcluidos >= $especialidade->minimo_nivel_1 => 1,
+                default => 0,
+            };
+
+            $status = match (true) {
+                $nivelAtingido >= 1 => 'Concluído',
+                $itensConcluidos > 0 => 'Parcial',
+                default => 'Pendente',
+            };
+
+            return [
+                'status' => $status,
+                'nivel_atingido' => $nivelAtingido,
+                'itens_concluidos' => $itensConcluidos,
+                'itens_totais' => $itensTotais,
+                'grupos' => $gruposStatus->all(),
+            ];
+        }
+
+        $todosSatisfeitos = $gruposStatus->isNotEmpty() && $gruposStatus->every(fn (array $g) => $g['satisfeito']);
+        $algumConcluido = $gruposStatus->contains(fn (array $g) => $g['concluidos'] > 0);
+
+        $status = match (true) {
+            $todosSatisfeitos => 'Concluído',
+            $algumConcluido => 'Parcial',
+            default => 'Pendente',
+        };
+
+        return [
+            'status' => $status,
+            'nivel_atingido' => null,
+            'itens_concluidos' => $gruposStatus->sum('concluidos'),
+            'itens_totais' => $gruposStatus->sum('necessarios_totais'),
+            'grupos' => $gruposStatus->all(),
+        ];
+    }
+
+    /**
+     * @return array{concluidos: int, necessarios: int, necessarios_totais: int, satisfeito: bool}
+     */
+    public function statusGrupoEspecialidade(Jovem $jovem, EspecialidadeDistintivoGrupo $grupo): array
+    {
+        $itens = $grupo->itens;
+        $necessariosTotais = $itens->count();
+        // null = todos os itens do grupo são obrigatórios (igual quantidade_minima_variaveis do Bloco).
+        $necessarios = $grupo->quantidade_minima ?? $necessariosTotais;
+
+        $concluidos = $itens
+            ->filter(fn (EspecialidadeDistintivoItem $item) => $this->itemEspecialidadeConcluido($jovem, $item))
+            ->count();
+
+        return [
+            'concluidos' => $concluidos,
+            'necessarios' => $necessarios,
+            'necessarios_totais' => $necessariosTotais,
+            'satisfeito' => $necessarios === 0 || $concluidos >= $necessarios,
+        ];
+    }
+
+    /**
+     * Antes fazia um exists() por item, sem cache nenhum — numa lista com
+     * dezenas de Especialidades/Insígnias (várias com vários itens cada),
+     * isso virava centenas de queries repetidas a cada interação (abrir/
+     * fechar modal, digitar na busca), já que o Livewire re-renderiza o
+     * componente inteiro. Agora carrega tudo de uma vez por jovem.
+     */
+    private function itemEspecialidadeConcluido(Jovem $jovem, EspecialidadeDistintivoItem $item): bool
+    {
+        return isset($this->itensEspecialidadeConcluidos($jovem)[$item->id]);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function itensEspecialidadeConcluidos(Jovem $jovem): array
+    {
+        return $this->cacheItensEspecialidadeConcluidos[$jovem->id] ??= ProgressoEspecialidade::query()
+            ->where('jovem_id', $jovem->id)
+            ->where('concluido', true)
+            ->pluck('especialidade_distintivo_item_id')
+            ->flip()
+            ->all();
+    }
+
+    /**
      * @return array{total: int, concluidas: int, percentual: float}
      */
     public function percentualAntigo(Jovem $jovem): array
@@ -204,6 +382,227 @@ class StatusProgressaoService
             'concluidos' => $concluidos,
             'percentual' => $total > 0 ? round(($concluidos / $total) * 100, 1) : 0.0,
         ];
+    }
+
+    /**
+     * Percentual "por bloco" fracionário — só usado pro portal do jovem, uma
+     * métrica mais motivadora que `percentualNovo()` (que só conta bloco
+     * 100%/0%, sem meio-termo). NÃO substitui `percentualNovo()`, que
+     * continua sendo a régua oficial usada pelo painel do chefe e pelo PDF
+     * de pendências.
+     *
+     * @return array{percentual: float}
+     */
+    public function percentualGamificadoNovo(Jovem $jovem): array
+    {
+        $blocos = BlocoNovo::query()
+            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
+            ->with('itens')
+            ->get();
+
+        if ($blocos->isEmpty()) {
+            return ['percentual' => 0.0];
+        }
+
+        $somaPercentuais = $blocos->sum(fn (BlocoNovo $bloco) => $this->percentualGamificadoBloco($jovem, $bloco));
+
+        return [
+            'percentual' => round(($somaPercentuais / $blocos->count()) * 100, 1),
+        ];
+    }
+
+    /**
+     * Percentual gamificado (0.0-1.0), só dos Blocos de UM Eixo — usado pro
+     * preenchimento "de onda" do card do Eixo na tela Início. Opera sobre
+     * `$eixo->blocos` já carregado (`getEixosNovos()` já faz eager load de
+     * `blocos.itens`), sem nenhuma query nova.
+     */
+    public function percentualGamificadoEixo(Jovem $jovem, EixoNovo $eixo): float
+    {
+        $blocos = $eixo->blocos;
+
+        return $blocos->isEmpty() ? 0.0 : $blocos->avg(
+            fn (BlocoNovo $bloco) => $this->percentualGamificadoBloco($jovem, $bloco)
+        );
+    }
+
+    /**
+     * Percentual gamificado (0.0-1.0) de UM Bloco só — usado na barra de
+     * progresso por bloco na tela Início, além de já ser reaproveitado
+     * internamente por `percentualGamificadoNovo()`/`percentualGamificadoEixo()`.
+     */
+    public function percentualGamificadoBloco(Jovem $jovem, BlocoNovo $bloco): float
+    {
+        $status = $this->statusBloco($jovem, $bloco);
+
+        $percentualObrigatorias = $status['obrigatorias_necessarias'] > 0
+            ? min($status['obrigatorias_concluidas'] / $status['obrigatorias_necessarias'], 1)
+            : 1.0;
+
+        if ($status['variaveis_necessarias'] === 0) {
+            return $percentualObrigatorias;
+        }
+
+        $percentualVariaveis = min($status['variaveis_concluidas'] / $status['variaveis_necessarias'], 1);
+
+        return ($percentualObrigatorias + $percentualVariaveis) / 2;
+    }
+
+    /**
+     * Data em que o Bloco foi concluído pra esse jovem — não é uma coluna
+     * nova, é derivada: a maior `data_conclusao` entre todas as Obrigatórias
+     * e, das Variáveis, só as N mais antigas necessárias pra bater o mínimo
+     * exigido (ou a Substitutiva, se foi por ela que o bloco fechou). Um
+     * item creditado só por equivalência com o programa antigo (sem
+     * `data_conclusao` própria em `progresso_novo`/`progresso_personalizado`)
+     * não contribui com uma data aqui — só usada pro portal do jovem, é
+     * puramente informativa, então esse detalhe não afeta a regra oficial.
+     */
+    public function dataConclusaoBloco(Jovem $jovem, BlocoNovo $bloco): ?Carbon
+    {
+        $status = $this->statusBloco($jovem, $bloco);
+
+        if ($status['status'] !== 'Concluído') {
+            return null;
+        }
+
+        $datasPorItem = $this->datasItensNovosConcluidos($jovem);
+        $itensVisiveis = $this->itensVisiveisDoBloco($jovem, $bloco);
+
+        // `->toBase()` é necessário aqui: `Eloquent\Collection::map()` só
+        // vira uma `Support\Collection` sozinho quando o resultado tem pelo
+        // menos um item (checa via `contains()`, que numa coleção vazia
+        // sempre dá `false`) — um bloco sem nenhuma Obrigatória visível (ou
+        // sem nenhuma concluída) chega aqui como uma `Eloquent\Collection`
+        // vazia de Carbon, e o `merge()` dela tenta chamar `getKey()` (só
+        // existe em Model) em cada item concluído. Forçar a base evita cair
+        // nesse `merge()` sobrescrito.
+        $datasObrigatorias = $itensVisiveis->where('tipo_acao', 'Obrigatória')
+            ->map(fn (ItemNovo $item) => $datasPorItem[$item->id] ?? null)
+            ->filter()
+            ->toBase();
+
+        $completouViaSubstitutiva = $status['substitutiva_concluida']
+            && $status['variaveis_concluidas'] < $status['variaveis_necessarias'];
+
+        if ($completouViaSubstitutiva) {
+            $datasSubstitutiva = $itensVisiveis->where('tipo_acao', 'Substitutiva')
+                ->map(fn (ItemNovo $item) => $datasPorItem[$item->id] ?? null)
+                ->filter()
+                ->toBase();
+
+            return $datasObrigatorias->merge($datasSubstitutiva)->max();
+        }
+
+        $datasPersonalizadosPorItem = $this->datasItensPersonalizadosConcluidos($jovem);
+
+        $datasVariaveis = $itensVisiveis->where('tipo_acao', 'Variável')
+            ->map(fn (ItemNovo $item) => $datasPorItem[$item->id] ?? null)
+            ->filter()
+            ->toBase()
+            ->merge(
+                $this->itensPersonalizadosDoBloco($jovem, $bloco)
+                    ->map(fn (ItemPersonalizado $item) => $datasPersonalizadosPorItem[$item->id] ?? null)
+                    ->filter()
+                    ->toBase()
+            )
+            ->sort()
+            ->values()
+            ->take($status['variaveis_necessarias']);
+
+        return $datasObrigatorias->merge($datasVariaveis)->max();
+    }
+
+    /**
+     * @return array<int, Carbon>
+     */
+    private function datasItensNovosConcluidos(Jovem $jovem): array
+    {
+        return $this->cacheDatasItensNovosConcluidos[$jovem->id] ??= ProgressoNovo::query()
+            ->where('jovem_id', $jovem->id)
+            ->where('concluido', true)
+            ->pluck('data_conclusao', 'item_novo_id')
+            ->all();
+    }
+
+    /**
+     * @return array<int, Carbon>
+     */
+    private function datasItensPersonalizadosConcluidos(Jovem $jovem): array
+    {
+        return $this->cacheDatasItensPersonalizadosConcluidos[$jovem->id] ??= ProgressoPersonalizado::query()
+            ->where('jovem_id', $jovem->id)
+            ->where('concluido', true)
+            ->pluck('data_conclusao', 'item_personalizado_id')
+            ->all();
+    }
+
+    /**
+     * Data em que o jovem atingiu um nível (1 ou 2) de uma Especialidade de
+     * estrutura `itens_niveis` (Lobinho/Escoteiro) — não é coluna nova: os
+     * itens do grupo "itens" são concluídos cumulativamente (sem nível
+     * próprio marcado), então a data do nível N é a `data_conclusao` do
+     * item de ordem `minimo_nivel_N`, contando em ordem cronológica de
+     * conclusão. Retorna null se o nível ainda não foi atingido, ou se a
+     * especialidade não usa essa estrutura.
+     */
+    public function dataNivelEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade, int $nivel): ?Carbon
+    {
+        $minimo = $nivel === 2 ? $especialidade->minimo_nivel_2 : $especialidade->minimo_nivel_1;
+
+        if (blank($minimo)) {
+            return null;
+        }
+
+        $grupoItens = $especialidade->grupos->firstWhere('chave', 'itens');
+
+        if (! $grupoItens) {
+            return null;
+        }
+
+        $datasPorItem = $this->datasItensEspecialidadeConcluidos($jovem);
+
+        $datas = $grupoItens->itens
+            ->map(fn (EspecialidadeDistintivoItem $item) => $datasPorItem[$item->id] ?? null)
+            ->filter()
+            ->sort()
+            ->values();
+
+        return $datas->get($minimo - 1);
+    }
+
+    /**
+     * Data de conclusão de uma Especialidade/Insígnia de estrutura
+     * `atividades_temas` (tudo-ou-nada entre os grupos) — a maior
+     * `data_conclusao` entre todos os itens que, juntos, satisfazem todos
+     * os grupos. Pra estrutura `itens_niveis` use {@see dataNivelEspecialidade()}.
+     */
+    public function dataConclusaoEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade): ?Carbon
+    {
+        if ($this->statusEspecialidade($jovem, $especialidade)['status'] !== 'Concluído') {
+            return null;
+        }
+
+        $datasPorItem = $this->datasItensEspecialidadeConcluidos($jovem);
+
+        $datas = $especialidade->grupos
+            ->flatMap(fn (EspecialidadeDistintivoGrupo $grupo) => $grupo->itens)
+            ->map(fn (EspecialidadeDistintivoItem $item) => $datasPorItem[$item->id] ?? null)
+            ->filter();
+
+        return $datas->max();
+    }
+
+    /**
+     * @return array<int, Carbon>
+     */
+    private function datasItensEspecialidadeConcluidos(Jovem $jovem): array
+    {
+        return $this->cacheDatasItensEspecialidadeConcluidos[$jovem->id] ??= ProgressoEspecialidade::query()
+            ->where('jovem_id', $jovem->id)
+            ->where('concluido', true)
+            ->pluck('data_conclusao', 'especialidade_distintivo_item_id')
+            ->all();
     }
 
     /**
@@ -312,8 +711,9 @@ class StatusProgressaoService
                 );
 
             $itemPendente = fn (ItemNovo $item) => ! $this->creditoService->itemNovoConcluido($jovem, $item);
+            $itensVisiveis = $this->itensVisiveisDoBloco($jovem, $bloco);
 
-            $obrigatoriasPendentes = $bloco->itens
+            $obrigatoriasPendentes = $itensVisiveis
                 ->where('tipo_acao', 'Obrigatória')
                 ->filter($itemPendente)
                 ->values()
@@ -327,7 +727,7 @@ class StatusProgressaoService
             $variaveisPendentes = $variaveisSatisfeitas
                 ? []
                 : [
-                    ...$bloco->itens->where('tipo_acao', 'Variável')->filter($itemPendente)->values()->all(),
+                    ...$itensVisiveis->where('tipo_acao', 'Variável')->filter($itemPendente)->values()->all(),
                     ...$this->itensPersonalizadosPendentes($jovem, $bloco),
                 ];
 
@@ -388,5 +788,20 @@ class StatusProgressaoService
             ->reject(fn (ItemAntigo $item) => $this->creditoService->itemAntigoConcluido($jovem, $item))
             ->values()
             ->all();
+    }
+
+    /**
+     * Contagem "leve" (só `count()`, sem eager load de contexto) de itens
+     * que o jovem marcou como feitos e está esperando confirmação de um
+     * adulto — usada no badge da aba Revisão, renderizado em toda página do
+     * portal (via `components/portal/tabs.blade.php`), então precisa ser
+     * barata. A lista completa (com texto/contexto pra exibir) fica em
+     * {@see ExibeProgressoDoJovem::getItensAguardandoRevisao()}.
+     */
+    public function contagemAguardandoRevisao(Jovem $jovem): int
+    {
+        return ProgressoNovo::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
+            + ProgressoPersonalizado::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
+            + ProgressoEspecialidade::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count();
     }
 }

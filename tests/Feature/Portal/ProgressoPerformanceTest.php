@@ -17,12 +17,12 @@ uses(RefreshDatabase::class);
 
 /**
  * Trava a otimização de N+1 feita em EquivalenciaCreditoService/
- * StatusProgressaoService (memoização + singleton) — sem ela, renderizar o
- * portal com o volume real do programa novo (18 blocos) chegava a 2000+
- * queries numa única página. Não é pra ser um número exato e frágil, só um
- * teto generoso que estoura se o N+1 voltar.
+ * StatusProgressaoService (memoização + singleton) — sem ela, renderizar a
+ * tela de um Eixo com o volume real do programa novo (18 blocos) chegava a
+ * 2000+ queries numa única página. Não é pra ser um número exato e frágil,
+ * só um teto generoso que estoura se o N+1 voltar.
  */
-it('renderiza o portal do jovem com um numero razoavel de queries mesmo com os 18 blocos do programa novo', function () {
+it('renderiza a tela do eixo com um numero razoavel de queries mesmo com os 18 blocos do programa novo', function () {
     $ramo = Ramo::create(['nome' => 'Sênior']);
     $jovem = Jovem::create([
         'nome' => 'Jovem de Teste',
@@ -66,7 +66,7 @@ it('renderiza o portal do jovem com um numero razoavel de queries mesmo com os 1
     ]);
 
     DB::enableQueryLog();
-    $this->get(route('portal.progresso'))->assertOk();
+    $this->get(route('portal.eixos.show', $eixo))->assertOk();
 
     expect(count(DB::getQueryLog()))->toBeLessThan(500);
 });
