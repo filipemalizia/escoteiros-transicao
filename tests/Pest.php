@@ -48,3 +48,20 @@ function something()
 {
     // ..
 }
+
+/**
+ * 1x1 PNG transparente — só pra ter bytes de imagem válidos nos testes que
+ * envolvem upload/download via Media Library.
+ */
+function pixelPngFile(): string
+{
+    $path = tempnam(sys_get_temp_dir(), 'pixel').'.png';
+    file_put_contents($path, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='));
+
+    return $path;
+}
+
+function pixelPngBase64(): string
+{
+    return 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+}
