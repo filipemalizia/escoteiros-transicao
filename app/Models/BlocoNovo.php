@@ -10,11 +10,16 @@ class BlocoNovo extends Model
 {
     protected $table = 'blocos_novos';
 
-    protected $fillable = ['eixo_id', 'titulo', 'descricao', 'quantidade_minima_variaveis'];
+    protected $fillable = ['eixo_id', 'titulo', 'descricao', 'quantidade_minima_variaveis', 'categoria_imagem_id'];
 
     public function eixo(): BelongsTo
     {
         return $this->belongsTo(EixoNovo::class, 'eixo_id');
+    }
+
+    public function categoriaImagem(): BelongsTo
+    {
+        return $this->belongsTo(CategoriaImagem::class);
     }
 
     public function itens(): HasMany

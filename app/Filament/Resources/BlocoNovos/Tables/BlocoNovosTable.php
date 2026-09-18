@@ -2,12 +2,14 @@
 
 namespace App\Filament\Resources\BlocoNovos\Tables;
 
+use App\Filament\Support\AtribuirImagemBulkAction;
 use App\Models\BlocoNovo;
 use App\Models\EixoNovo;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Notifications\Notification;
+use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -20,6 +22,10 @@ class BlocoNovosTable
         return $table
             ->modifyQueryUsing(fn ($query) => $query->withCount('itens'))
             ->columns([
+                ImageColumn::make('categoriaImagem.imagem')
+                    ->label('Imagem')
+                    ->state(fn ($record) => $record->categoriaImagem?->getFirstMediaUrl('imagem') ?: null)
+                    ->size(40),
                 TextColumn::make('titulo')
                     ->searchable(),
                 TextColumn::make('eixo.nome')
@@ -54,6 +60,7 @@ class BlocoNovosTable
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    AtribuirImagemBulkAction::make('bloco', 'Título do bloco'),
                     DeleteBulkAction::make()
                         ->before(function (Collection $records, DeleteBulkAction $action) {
                             if ($records->contains(fn (BlocoNovo $bloco) => $bloco->possuiItensComDadosVinculados())) {
