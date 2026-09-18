@@ -657,19 +657,33 @@ chegava a **2000+ queries** pra renderizar os 18 blocos do programa novo.
 ## Deploy
 
 - **Código PHP**: Hostinger (Git auto-deploy no hPanel, observando a branch
-  `main`) — a cada push, a Hostinger dá `git pull` e roda o script de
-  pós-deploy configurado no próprio hPanel (Websites → Avançado → Git →
-  Deployment script), com o conteúdo de `deploy/hostinger-post-deploy.sh`
-  (composer install, migrate --force, cache clear/cache, storage:link).
+  `main`) — a cada push, a Hostinger só dá `git pull` sozinha. **O plano
+  usado aqui não tem o campo "Deployment script" no Git do hPanel**
+  (descoberto na prática — não é só falta de configurar, a opção não
+  aparece), então nada roda automaticamente depois do pull: nem
+  `composer install`, nem migration, nem cache. `deploy/
+  hostinger-post-deploy.sh` guarda esses comandos, mas só é executado
+  manualmente, via a action `.github/workflows/
+  rodar-migrations-producao.yml` (aba Actions do GitHub → Run workflow),
+  que SSHa no servidor e roda o script. Ou seja: depois de um push com
+  migration nova, é preciso disparar essa action manualmente — não é
+  automático.
 - **Assets do Vite (`public/build`)**: a Hostinger não tem Node/npm no SSH,
   então o build não roda lá. Fica separado do fluxo de git: o workflow
   `.github/workflows/deploy-assets.yml` builda os assets no GitHub Actions
   (a cada push em `main`) e envia só a pasta `public/build` direto pro
-  servidor via `rsync` sobre SSH (porta 65002, usuário `u569700691`,
-  host `89.116.115.13`), usando uma chave dedicada guardada nos Secrets do
-  repositório (`HOSTINGER_SSH_KEY`, `HOSTINGER_SSH_HOST`,
-  `HOSTINGER_SSH_PORT`, `HOSTINGER_SSH_USER`, `HOSTINGER_DEPLOY_PATH`).
-  `public/build` continua fora do git (`.gitignore`) — nunca é commitado.
-- Servidor: `/home/u569700691/domains/transicao.marciliodias.org.br/public_html/`.
-- Cuidado: `migrate --force` roda sem confirmação a cada push na `main` —
-  revisar migrations antes de mergear pra lá.
+  servidor via `rsync` sobre SSH, usando uma chave dedicada guardada nos
+  Secrets do repositório (`HOSTINGER_SSH_KEY`, `HOSTINGER_SSH_HOST`,
+  `HOSTINGER_SSH_PORT`, `HOSTINGER_SSH_USER`, `HOSTINGER_DEPLOY_PATH`) —
+  a action manual de migrations reaproveita esses mesmos secrets
+  (`HOSTINGER_DEPLOY_PATH` é a raiz da aplicação, não uma subpasta de
+  assets). `public/build` continua fora do git (`.gitignore`) — nunca é
+  commitado.
+- Host/porta/usuário/caminho do servidor (dados sensíveis, repositório é
+  público): ver `DEPLOY-PRIVADO.md` (local, fora do git) ou os Secrets do
+  GitHub acima.
+- `migrate --force` só aplica migrations que ainda não rodaram (checa a
+  tabela `migrations`) — nunca dá `DROP`/recria tabela ou coluna
+  existente. Mesmo assim, vale revisar migrations antes de mergear pra
+  `main`, já que quem dispara a action de migrar é uma pessoa, não mais
+  um gatilho automático de push.

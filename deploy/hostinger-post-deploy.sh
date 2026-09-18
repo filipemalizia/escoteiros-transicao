@@ -1,7 +1,11 @@
 #!/bin/bash
-# Cole este conteúdo no campo "Deployment script" do Git da Hostinger
-# (hPanel > Websites > Gerenciar > Avançado > Git). Ele roda automaticamente
-# logo depois de cada "git pull" que a Hostinger fizer na branch "main".
+# O plano da Hostinger usado aqui não tem um campo de "Deployment script" no
+# Git do hPanel — o auto-deploy deles só faz o `git pull` sozinho, sem rodar
+# nada depois. Por isso este script não é chamado automaticamente: ele roda
+# via SSH, disparado manualmente pela action
+# .github/workflows/rodar-migrations-producao.yml (aba Actions > Run
+# workflow), depois que o auto-deploy da Hostinger já colocou o código novo
+# no ar.
 #
 # public/build (assets do Vite) é enviado separadamente, direto por SSH,
 # pelo workflow .github/workflows/deploy-assets.yml — este servidor não tem
