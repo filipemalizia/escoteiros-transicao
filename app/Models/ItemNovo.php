@@ -10,6 +10,17 @@ class ItemNovo extends Model
 {
     protected $table = 'itens_novos';
 
+    /**
+     * Default aplicado pelo próprio Eloquent (independe do default da
+     * coluna no banco, que continua `'Geral'` por só dar pra trocar via
+     * ALTER específico de dialeto — o SQLite dos testes não suporta a mesma
+     * sintaxe do MySQL). Cobre qualquer `ItemNovo::create()` que não
+     * especifique modalidade explicitamente.
+     */
+    protected $attributes = [
+        'modalidade' => 'Básica',
+    ];
+
     protected $fillable = [
         'bloco_id',
         'codigo',
