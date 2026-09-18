@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Jovem extends Model
 {
@@ -53,6 +54,15 @@ class Jovem extends Model
     public function modalidade(): string
     {
         return $this->equipe?->modalidade ?? 'Básica';
+    }
+
+    /**
+     * Só o primeiro nome — usado no portal do jovem (ex.: "Olá, Maria"), já
+     * que o cadastro guarda o nome completo.
+     */
+    public function primeiroNome(): string
+    {
+        return Str::before($this->nome, ' ');
     }
 
     public function progressoAntigo(): HasMany
