@@ -687,3 +687,12 @@ chegava a **2000+ queries** pra renderizar os 18 blocos do programa novo.
   existente. Mesmo assim, vale revisar migrations antes de mergear pra
   `main`, já que quem dispara a action de migrar é uma pessoa, não mais
   um gatilho automático de push.
+- **Catálogo de Especialidades**: importado por upload manual no painel
+  (Ferramentas → Importar Especialidades), não pelo deploy — o JSON
+  (extraído por uma ferramenta separada, `paxtu-scraper`, fora deste
+  repositório) nunca é commitado, já que o repositório é público e esse é
+  dado raspado de terceiros. O catálogo é fixo (sem rotina de atualização
+  automatizada por enquanto); pra reimportar (ex.: catálogo atualizado),
+  é só fazer upload do JSON de novo na mesma tela — o importador
+  (`ImportadorEspecialidadesService`) é idempotente (upsert por
+  `fonte_specialty_id`, pula imagem cuja URL de origem não mudou).
