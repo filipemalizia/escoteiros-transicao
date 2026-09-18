@@ -19,6 +19,18 @@ class EspecialidadeDistintivosTable
                     ->searchable(),
                 TextColumn::make('tipo')
                     ->badge(),
+                TextColumn::make('estrutura')
+                    ->badge()
+                    ->placeholder('Sem estrutura')
+                    ->formatStateUsing(fn (?string $state) => match ($state) {
+                        'itens_niveis' => 'Itens + níveis',
+                        'atividades_temas' => 'Atividades + temas',
+                        default => null,
+                    }),
+                TextColumn::make('eixosNovos.ramo.nome')
+                    ->label('Ramos')
+                    ->badge()
+                    ->listWithLineBreaks(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
