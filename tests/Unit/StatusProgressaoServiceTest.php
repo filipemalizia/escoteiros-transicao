@@ -188,6 +188,29 @@ it('nunca marca bloco como Concluído quando os unicos itens sao de outra modali
     expect($status['status'])->toBe('Pendente');
 });
 
+it('exige todas as variaveis do bloco quando quantidade_minima_variaveis nao foi definida (null = todas, nao zero)', function () {
+    // Bug real em produção: sem `quantidade_minima_variaveis` definido, o
+    // bloco ficava vacuamente satisfeito nas Variáveis (tratava null como
+    // "0 exigidas" em vez de "todas exigidas", ao contrário do mesmo
+    // conceito em EspecialidadeDistintivoGrupo::quantidade_minima) - um
+    // bloco sem nenhuma Obrigatória e sem esse mínimo definido aparecia
+    // "Concluído" pra um jovem recém-criado, sem ele ter feito nada.
+    $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Espiritualidade']); // sem quantidade_minima_variaveis
+
+    $variavel1 = ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-001', 'descricao' => 'Var 1', 'tipo_acao' => 'Variável']);
+    ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'HPV-002', 'descricao' => 'Var 2', 'tipo_acao' => 'Variável']);
+
+    $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
+    expect($status['status'])->toBe('Pendente')
+        ->and($status['variaveis_necessarias'])->toBe(2); // as 2 disponíveis, não 0
+
+    marcarConcluido($this->jovem, 'novo', $variavel1->id, $this->service);
+
+    $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
+    expect($status['status'])->toBe('Parcial'); // só 1 das 2 ainda
+});
+
 it('calcula percentuais e pendencias do programa novo corretamente', function () {
     $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
 

@@ -159,7 +159,12 @@ class StatusProgressaoService
         $obrigatoriasNecessarias = $obrigatorias->count();
         $obrigatoriasConcluidas = $obrigatorias->filter($itemConcluido)->count();
 
-        $variaveisNecessarias = $bloco->quantidade_minima_variaveis ?? 0;
+        // null = todos os itens Variável do bloco são exigidos (igual
+        // quantidade_minima do EspecialidadeDistintivoGrupo, ver
+        // EspecialidadeStatusService::statusGrupoEspecialidade()) — nunca
+        // "nada exigido", senão um bloco sem mínimo definido ficava vacuamente
+        // satisfeito nas Variáveis mesmo sem o jovem ter concluído nenhuma.
+        $variaveisNecessarias = $bloco->quantidade_minima_variaveis ?? $variaveis->count();
         $variaveisConcluidas = $variaveis->filter($itemConcluido)->count();
 
         /**
@@ -343,6 +348,13 @@ class StatusProgressaoService
     public function percentualGamificadoBloco(Jovem $jovem, BlocoNovo $bloco): float
     {
         $status = $this->statusBloco($jovem, $bloco);
+
+        // Mesma proteção de calcularStatusBloco(): um bloco sem nenhuma
+        // Obrigatória nem Variável (cadastro incompleto) nunca conta como
+        // 100% preenchido só porque não tem nada exigido em nenhum dos dois.
+        if ($status['obrigatorias_necessarias'] === 0 && $status['variaveis_necessarias'] === 0) {
+            return 0.0;
+        }
 
         $percentualObrigatorias = $status['obrigatorias_necessarias'] > 0
             ? min($status['obrigatorias_concluidas'] / $status['obrigatorias_necessarias'], 1)
