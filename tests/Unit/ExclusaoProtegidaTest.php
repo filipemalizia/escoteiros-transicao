@@ -6,6 +6,8 @@ use App\Models\CompetenciaAntiga;
 use App\Models\EixoNovo;
 use App\Models\Equivalencia;
 use App\Models\EquivalenciaBloco;
+use App\Models\EquivalenciaEspecialidade;
+use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\Jovem;
@@ -89,6 +91,17 @@ it('ItemNovo com progresso concluido possui dados vinculados', function () {
     expect($this->itemNovo->possuiDadosVinculados())->toBeTrue();
 });
 
+it('ItemNovo com equivalencia de especialidade cadastrada possui dados vinculados', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade']);
+
+    EquivalenciaEspecialidade::create([
+        'especialidade_distintivo_id' => $especialidade->id,
+        'item_novo_id' => $this->itemNovo->id,
+    ]);
+
+    expect($this->itemNovo->possuiDadosVinculados())->toBeTrue();
+});
+
 it('CompetenciaAntiga reflete se algum de seus itens possui dados vinculados', function () {
     expect($this->competencia->possuiItensComDadosVinculados())->toBeFalse();
 
@@ -111,4 +124,39 @@ it('BlocoNovo reflete se possui equivalencia de bloco vinculada, mesmo sem progr
     ]);
 
     expect($this->bloco->fresh()->possuiItensComDadosVinculados())->toBeTrue();
+});
+
+it('EspecialidadeDistintivo reflete se algum de seus itens possui dados vinculados', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade']);
+    $item = ItemNovo::create([
+        'bloco_id' => $this->bloco->id,
+        'especialidade_id' => $especialidade->id,
+        'codigo' => 'ACP-001',
+        'descricao' => 'Item 1',
+        'tipo_acao' => 'Obrigatória',
+    ]);
+
+    expect($especialidade->possuiItensComDadosVinculados())->toBeFalse();
+
+    ProgressoNovo::create([
+        'jovem_id' => $this->jovem->id,
+        'item_novo_id' => $item->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+
+    expect($especialidade->fresh()->possuiItensComDadosVinculados())->toBeTrue();
+});
+
+it('EspecialidadeDistintivo reflete se possui equivalencia de especialidade vinculada, mesmo sem progresso nos itens', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade']);
+
+    expect($especialidade->possuiItensComDadosVinculados())->toBeFalse();
+
+    EquivalenciaEspecialidade::create([
+        'especialidade_distintivo_id' => $especialidade->id,
+        'item_novo_id' => $this->itemNovo->id,
+    ]);
+
+    expect($especialidade->fresh()->possuiItensComDadosVinculados())->toBeTrue();
 });

@@ -6,16 +6,35 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class Jovem extends Model
 {
     protected $table = 'jovens';
 
-    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id'];
+    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id', 'portal_visitado_em'];
 
     protected $casts = [
         'data_nascimento' => 'date',
+        'portal_visitado_em' => 'datetime',
     ];
+
+    /**
+     * Quando a Equipe do jovem muda, o Ramo dele acompanha automaticamente
+     * (uma equipe pertence sempre a um ramo só) — evita o jovem ficar com
+     * Ramo desatualizado depois de ser movido pra uma equipe de outro ramo
+     * (ex.: subiu de Sênior pra Pioneiro). Roda em qualquer caminho que
+     * altere `equipe_id` (form do Jovem, Associar/Criar na Equipe), porque
+     * é um evento do model, não de uma tela específica.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Jovem $jovem) {
+            if ($jovem->isDirty('equipe_id') && $jovem->equipe_id) {
+                $jovem->ramo_atual_id = Equipe::find($jovem->equipe_id)?->ramo_id ?? $jovem->ramo_atual_id;
+            }
+        });
+    }
 
     public function ramoAtual(): BelongsTo
     {
@@ -25,6 +44,60 @@ class Jovem extends Model
     public function equipe(): BelongsTo
     {
         return $this->belongsTo(Equipe::class);
+    }
+
+    /**
+     * Básica/Ar/Mar — herdada da Equipe (uma equipe é sempre de uma
+     * modalidade só). Jovem sem equipe cadastrada cai em 'Básica', o valor
+     * seguro que nunca esconde nem libera item de Ar/Mar por engano.
+     */
+    public function modalidade(): string
+    {
+        return $this->equipe?->modalidade ?? 'Básica';
+    }
+
+    /**
+     * Só o primeiro nome — usado no portal do jovem (ex.: "Olá, Maria"), já
+     * que o cadastro guarda o nome completo.
+     */
+    public function primeiroNome(): string
+    {
+        return Str::before($this->nome, ' ');
+    }
+
+    /**
+     * Primeiros nomes comuns demais pra identificar sozinhos quem é quem
+     * num grupo (várias "Ana"/"Maria"/"João" diferentes) — quando o
+     * cadastro tem um nome do meio, ele entra junto no nome de exibição.
+     */
+    private const PRIMEIROS_NOMES_COMPOSTOS = [
+        'ana', 'maria', 'joão', 'joao', 'josé', 'jose', 'luiz', 'luís', 'luis', 'joana', 'marco', 'jean',
+    ];
+
+    /**
+     * Nome pra exibir em materiais de celebração (ex.: cartão de conquista
+     * compartilhável) — primeiro nome + sobrenome, exceto quando o primeiro
+     * nome sozinho for curto ou comum demais pra identificar a pessoa (ex.:
+     * "Ana", "Maria"), caso em que o nome do meio entra junto (ex.: "Ana
+     * Sophia Silva" em vez de só "Ana Silva").
+     */
+    public function nomeExibicao(): string
+    {
+        $partes = preg_split('/\s+/', trim($this->nome)) ?: [];
+
+        if (count($partes) <= 2) {
+            return $this->nome;
+        }
+
+        $primeiroNome = $partes[0];
+        $sobrenome = $partes[count($partes) - 1];
+
+        $usaNomeComposto = mb_strlen($primeiroNome) <= 4
+            || in_array(Str::lower($primeiroNome), self::PRIMEIROS_NOMES_COMPOSTOS, true);
+
+        $nome = $usaNomeComposto ? "{$primeiroNome} {$partes[1]}" : $primeiroNome;
+
+        return "{$nome} {$sobrenome}";
     }
 
     public function progressoAntigo(): HasMany

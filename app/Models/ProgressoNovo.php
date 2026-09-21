@@ -9,7 +9,7 @@ class ProgressoNovo extends Model
 {
     protected $table = 'progresso_novo';
 
-    protected $fillable = ['jovem_id', 'item_novo_id', 'concluido', 'data_conclusao', 'registrado_por_id', 'solicitado_pelo_jovem', 'solicitado_em'];
+    protected $fillable = ['jovem_id', 'item_novo_id', 'concluido', 'data_conclusao', 'registrado_por_id', 'solicitado_pelo_jovem', 'solicitado_em', 'observacao_jovem'];
 
     protected $casts = [
         'concluido' => 'boolean',

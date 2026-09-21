@@ -1,0 +1,30 @@
+name: Rodar migrations em produção (manual)
+
+# Disparo manual: aba Actions > "Rodar migrations em produção (manual)" >
+# Run workflow. Roda `deploy/hostinger-post-deploy.sh` no servidor via SSH
+# (composer install + `php artisan migrate --force` + rebuild dos caches).
+#
+# `migrate --force` só aplica as migrations que ainda não rodaram (checa a
+# tabela `migrations`) — nunca dá DROP/recria nada que já existe. O código
+# em si (incluindo os arquivos de migration novos) já precisa estar no
+# servidor antes de rodar isso — quem leva o código lá é o auto-deploy da
+# própria Hostinger, disparado à parte quando você dá push na `main`.
+on:
+  workflow_dispatch:
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configurar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HOSTINGER_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "${{ secrets.HOSTINGER_SSH_PORT }}" "${{ secrets.HOSTINGER_SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Rodar composer install + migrate + cache no servidor
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.HOSTINGER_SSH_PORT }}" \
+            "${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}" \
+            "cd ${{ secrets.HOSTINGER_DEPLOY_PATH }} && bash deploy/hostinger-post-deploy.sh"

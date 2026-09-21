@@ -208,7 +208,7 @@ it('Novo, cada um dos 4 ramos: 18 blocos concluidos + todas as flags novo -> ele
     expect($this->service->elegivelReconhecimentoNovo($jovem->fresh()))->toBeTrue();
 })->with([
     'Lobinho' => ['Lobinho', ['lobinho_novo_desafio_pessoal', 'lobinho_novo_avaliacao_pares']],
-    'Escoteiro' => ['Escoteiro', ['escoteiro_novo_desafio_pessoal_travessia', 'escoteiro_novo_autoavaliacao', 'escoteiro_novo_avaliacao_corte_honra_escotistas']],
+    'Escoteiro' => ['Escoteiro', ['escoteiro_novo_desafio_pessoal_travessia', 'escoteiro_novo_avaliacao_pares']],
     'Sênior' => ['Sênior', ['senior_novo_desafio_pessoal', 'senior_novo_avaliacao_pares']],
     'Pioneiro' => ['Pioneiro', ['pioneiro_novo_desafio_pessoal', 'pioneiro_novo_avaliacao_pares']],
 ]);
@@ -259,4 +259,89 @@ it('elegivelReconhecimentoAntigo do Sênior exige 100% dos itens e as 5 chaves c
     }
 
     expect($this->service->elegivelReconhecimentoAntigo($jovem->fresh()))->toBeTrue();
+});
+
+/**
+ * As imagens reais (svg) já foram subidas em `public/images/etapas/` e
+ * `public/images/reconhecimentos/` — em vez de mockar um arquivo próprio
+ * (que colidiria com o real, já que o slug é o mesmo), esses testes movem
+ * o arquivo real pro lado temporariamente e devolvem no `finally`, nunca
+ * apagando o conteúdo de verdade.
+ */
+function comArquivoTemporariamenteAusente(string $caminhoAbsoluto, Closure $callback): void
+{
+    $existiaAntes = file_exists($caminhoAbsoluto);
+    $backup = $caminhoAbsoluto.'.bak-teste';
+
+    if ($existiaAntes) {
+        rename($caminhoAbsoluto, $backup);
+    }
+
+    try {
+        $callback();
+    } finally {
+        if ($existiaAntes) {
+            rename($backup, $caminhoAbsoluto);
+        }
+    }
+}
+
+it('imagemEtapa retorna null quando o arquivo ainda nao foi subido', function () {
+    comArquivoTemporariamenteAusente(
+        public_path('images/etapas/saltador.svg'),
+        function () {
+            expect($this->service->imagemEtapa('Lobinho', 'Saltador'))->toBeNull();
+        },
+    );
+});
+
+it('imagemEtapa retorna a url do arquivo real (svg) e trata a variante "concluido(a)" igual a etapa base', function () {
+    expect($this->service->imagemEtapa('Lobinho', 'Saltador'))->toContain('saltador.svg')
+        ->and($this->service->imagemEtapa('Lobinho', 'Saltador concluído'))->toContain('saltador.svg');
+});
+
+it('imagemEtapa retorna null pra ramo ou etapa sem imagem mapeada', function () {
+    expect($this->service->imagemEtapa('Ramo Inexistente', 'Etapa Qualquer'))->toBeNull();
+});
+
+it('imagemReconhecimento retorna null quando o arquivo ainda nao foi subido', function () {
+    $ramo = Ramo::create(['nome' => 'Escoteiro']);
+
+    comArquivoTemporariamenteAusente(
+        public_path('images/reconhecimentos/lis-de-ouro.svg'),
+        function () use ($ramo) {
+            expect($this->service->imagemReconhecimento($ramo))->toBeNull();
+        },
+    );
+});
+
+it('imagemReconhecimento retorna a url do arquivo real (svg)', function () {
+    $ramo = Ramo::create(['nome' => 'Escoteiro']);
+
+    expect($this->service->imagemReconhecimento($ramo))->toContain('lis-de-ouro.svg');
+});
+
+it('imagemReconhecimento retorna null pra ramo sem imagem mapeada', function () {
+    $ramo = Ramo::create(['nome' => 'Ramo Inexistente']);
+
+    expect($this->service->imagemReconhecimento($ramo))->toBeNull();
+});
+
+it('dataUriImagemEtapa devolve a mesma imagem como data uri base64, pro cartao de conquista', function () {
+    expect($this->service->dataUriImagemEtapa('Lobinho', 'Saltador'))->toStartWith('data:image/svg+xml;base64,');
+});
+
+it('dataUriImagemEtapa retorna null quando o arquivo ainda nao foi subido', function () {
+    comArquivoTemporariamenteAusente(
+        public_path('images/etapas/saltador.svg'),
+        function () {
+            expect($this->service->dataUriImagemEtapa('Lobinho', 'Saltador'))->toBeNull();
+        },
+    );
+});
+
+it('dataUriImagemReconhecimento devolve a mesma imagem como data uri base64, pro cartao de conquista', function () {
+    $ramo = Ramo::create(['nome' => 'Escoteiro']);
+
+    expect($this->service->dataUriImagemReconhecimento($ramo))->toStartWith('data:image/svg+xml;base64,');
 });

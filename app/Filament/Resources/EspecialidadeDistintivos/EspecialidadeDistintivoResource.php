@@ -5,6 +5,7 @@ namespace App\Filament\Resources\EspecialidadeDistintivos;
 use App\Filament\Resources\EspecialidadeDistintivos\Pages\CreateEspecialidadeDistintivo;
 use App\Filament\Resources\EspecialidadeDistintivos\Pages\EditEspecialidadeDistintivo;
 use App\Filament\Resources\EspecialidadeDistintivos\Pages\ListEspecialidadeDistintivos;
+use App\Filament\Resources\EspecialidadeDistintivos\RelationManagers\GruposRelationManager;
 use App\Filament\Resources\EspecialidadeDistintivos\Schemas\EspecialidadeDistintivoForm;
 use App\Filament\Resources\EspecialidadeDistintivos\Tables\EspecialidadeDistintivosTable;
 use App\Models\EspecialidadeDistintivo;
@@ -44,7 +45,7 @@ class EspecialidadeDistintivoResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            GruposRelationManager::class,
         ];
     }
 

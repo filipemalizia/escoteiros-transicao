@@ -2,9 +2,10 @@
 
 namespace App\Filament\Resources\BlocoNovos\Schemas;
 
+use App\Filament\Support\CategoriaImagemSelectField;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
 
 class BlocoNovoForm
@@ -24,6 +25,11 @@ class BlocoNovoForm
                     ->columnSpanFull(),
                 TextInput::make('quantidade_minima_variaveis')
                     ->numeric(),
+                CategoriaImagemSelectField::make(
+                    tipo: 'bloco',
+                    label: 'Imagem do bloco (compartilhada entre ramos)',
+                    chaveLabel: 'Nome (normalmente igual ao título do bloco)',
+                ),
             ]);
     }
 }

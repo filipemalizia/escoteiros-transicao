@@ -57,3 +57,31 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
 # escoteiros-transicao
+
+## Deploy - notas pra quem for mexer
+
+- **Conectar via SSH / pasta do projeto no servidor**: dados de conexão
+  (host, porta, usuário, caminho) são sensíveis e este repositório é
+  público — ver `DEPLOY-PRIVADO.md` (arquivo local, fora do git) ou os
+  Secrets do GitHub do repositório.
+- **A CLI do SSH usa PHP 8.3, o projeto exige 8.4+**: tanto `php` quanto
+  `lsphp` (os binários padrão do sistema) resolvem pra PHP 8.3.33, mas o
+  `composer.json` exige `>= 8.4.1` — rodar `artisan`/`composer` direto dá
+  erro de "Composer detected issues in your platform". O binário certo é:
+  ```
+  /opt/alt/php84/usr/bin/php
+  ```
+  Use sempre esse caminho completo por SSH, ex.:
+  ```
+  /opt/alt/php84/usr/bin/php artisan migrate:status
+  /opt/alt/php84/usr/bin/php artisan migrate --force
+  /opt/alt/php84/usr/bin/php artisan tinker
+  ```
+- **Rodar migrations em produção**: o normal é disparar a action **"Rodar
+  migrations em produção (manual)"** na aba Actions do GitHub
+  (`.github/workflows/rodar-migrations-producao.yml`) — ela roda
+  `composer install` + `migrate --force` + rebuild de cache no servidor
+  via SSH sozinha. Usar o SSH manual (acima) só se a action falhar ou pra
+  debug.
+- Mais contexto sobre a arquitetura de deploy (por que existem 2 workflows,
+  o que cada um faz) está em `CONTEXTO.md`, seção "Deploy".

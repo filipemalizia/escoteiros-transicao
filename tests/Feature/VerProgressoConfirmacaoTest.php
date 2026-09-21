@@ -97,6 +97,31 @@ it('rejeita uma solicitacao nova sem marcar concluido', function () {
         ->and($progresso->solicitado_pelo_jovem)->toBeFalse();
 });
 
+it('abre e fecha o modal de avaliacao de um item novo, e aprova pelo botao generico', function () {
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->assertSet('avaliandoItemId', null)
+        ->call('abrirAvaliacao', 'novo', $this->itemNovo->id)
+        ->assertSet('avaliandoTipo', 'novo')
+        ->assertSet('avaliandoItemId', $this->itemNovo->id)
+        ->assertSee('Aprovar')
+        ->assertSee('Recusar')
+        ->call('confirmarAvaliacaoAtual')
+        ->assertSet('avaliandoItemId', null);
+
+    $progresso = $this->progressoNovo->fresh();
+
+    expect($progresso->concluido)->toBeTrue()
+        ->and($progresso->solicitado_pelo_jovem)->toBeFalse();
+});
+
+it('mostra a observacao do jovem pro chefe quando existir num item novo', function () {
+    $this->progressoNovo->update(['observacao_jovem' => 'Fiz sozinho no fim de semana.']);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->call('abrirAvaliacao', 'novo', $this->itemNovo->id)
+        ->assertSee('Fiz sozinho no fim de semana.');
+});
+
 it('nao conta um item apenas solicitado como concluido no status da competencia', function () {
     $status = app(StatusProgressaoService::class)->statusCompetencia($this->jovem, $this->itemAntigo->competencia);
 

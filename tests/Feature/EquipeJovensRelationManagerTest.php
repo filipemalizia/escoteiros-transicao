@@ -35,6 +35,25 @@ it('associa um jovem existente do mesmo ramo a equipe', function () {
     expect($this->jovemSemEquipe->fresh()->equipe_id)->toBe($this->equipe->id);
 });
 
+it('associa um jovem de outro ramo, e o ramo dele passa a ser o da equipe', function () {
+    $jovemPioneiro = Jovem::create([
+        'nome' => 'Jovem Pioneiro',
+        'data_nascimento' => '2008-01-01',
+        'ramo_atual_id' => $this->outroRamo->id,
+    ]);
+
+    Livewire::test(JovensRelationManager::class, [
+        'ownerRecord' => $this->equipe,
+        'pageClass' => EditEquipe::class,
+    ])
+        ->callTableAction('associate', data: ['recordId' => $jovemPioneiro->getKey()]);
+
+    $jovemPioneiro->refresh();
+
+    expect($jovemPioneiro->equipe_id)->toBe($this->equipe->id)
+        ->and($jovemPioneiro->ramo_atual_id)->toBe($this->ramo->id);
+});
+
 it('cria um jovem novo ja vinculado a equipe, herdando o ramo dela', function () {
     Livewire::test(JovensRelationManager::class, [
         'ownerRecord' => $this->equipe,

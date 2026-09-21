@@ -16,7 +16,6 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
 
 class JovensRelationManager extends RelationManager
 {
@@ -56,9 +55,8 @@ class JovensRelationManager extends RelationManager
                         'ramo_atual_id' => $this->getOwnerRecord()->ramo_id,
                     ]),
                 AssociateAction::make()
-                    ->recordSelectOptionsQuery(
-                        fn (Builder $query) => $query->where('ramo_atual_id', $this->getOwnerRecord()->ramo_id)
-                    ),
+                    ->label('Associar (ou mudar de ramo)')
+                    ->modalDescription('Pode escolher um jovem de outro ramo — o Ramo dele é atualizado automaticamente pro desta equipe (ex.: subiu de Sênior pra Pioneiro).'),
             ])
             ->recordActions([
                 EditAction::make(),

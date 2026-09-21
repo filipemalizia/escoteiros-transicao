@@ -13,7 +13,7 @@ class RamosSeeder extends Seeder
     public function run(): void
     {
         foreach (['Lobinho', 'Escoteiro', 'Sênior', 'Pioneiro'] as $nome) {
-            Ramo::create(['nome' => $nome]);
+            Ramo::firstOrCreate(['nome' => $nome]);
         }
     }
 }

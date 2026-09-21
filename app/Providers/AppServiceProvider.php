@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use App\Services\EquivalenciaCreditoService;
+use App\Services\EspecialidadeStatusService;
 use App\Services\StatusProgressaoService;
+use Filament\Tables\Table;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -22,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
         // `app(...::class)` (chamado repetidas vezes na tela de progresso)
         // criaria uma instância nova e o cache nunca teria efeito, mantendo
         // o N+1 que causava lentidão no portal do jovem e no painel.
+        $this->app->singleton(EspecialidadeStatusService::class);
         $this->app->singleton(EquivalenciaCreditoService::class);
         $this->app->singleton(StatusProgressaoService::class);
     }
@@ -39,6 +42,14 @@ class AppServiceProvider extends ServiceProvider
                 Limit::perMinute(5)->by($request->ip()),
                 Limit::perMinute(10)->by('registro:'.Str::lower(trim((string) $request->input('registro')))),
             ];
+        });
+
+        // Padrão brasileiro em toda coluna de tabela que usa ->date()/->dateTime()
+        // sem formato explícito (não muda nada no banco, só a exibição).
+        Table::configureUsing(function (Table $table): void {
+            $table
+                ->defaultDateDisplayFormat('d/m/Y')
+                ->defaultDateTimeDisplayFormat('d/m/Y H:i');
         });
     }
 }

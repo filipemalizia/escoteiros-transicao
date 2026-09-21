@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\BlocoNovo;
 use App\Models\ItemAntigo;
 use App\Models\Jovem;
 use App\Models\Ramo;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 class EtapaProgressaoService
 {
@@ -41,14 +44,17 @@ class EtapaProgressaoService
     ];
 
     /**
-     * Cortes de etapa do programa novo, por quantidade de Blocos concluídos (sempre 18 no total).
-     * Cada par é [quantidade_maxima_inclusive, nome_da_etapa].
+     * Cortes de etapa do programa novo, por quantidade de Blocos concluídos
+     * (sempre 18 no total). Cada par é [quantidade_maxima_inclusive,
+     * nome_da_etapa] — a última etapa de cada ramo já bate exatamente nos
+     * 18 blocos (não sobra corte "a mais" pro Reconhecimento; ele exige os
+     * mesmos 18 blocos, só que com os requisitos complementares também).
      */
     protected const CORTES_ETAPA_NOVO = [
-        'Lobinho' => [[3, 'Pata Tenra'], [7, 'Saltador'], [12, 'Rastreador'], [17, 'Caçador'], [18, 'Caçador concluído']],
-        'Escoteiro' => [[3, 'Pistas'], [7, 'Trilha'], [12, 'Rumo'], [17, 'Travessia'], [18, 'Travessia concluída']],
-        'Sênior' => [[5, 'Escalada'], [11, 'Conquista'], [17, 'Azimute'], [18, 'Azimute concluída']],
-        'Pioneiro' => [[5, 'Descoberta'], [11, 'Destino'], [17, 'Horizonte'], [18, 'Horizonte concluída']],
+        'Lobinho' => [[4, 'Pata Tenra'], [8, 'Saltador'], [13, 'Rastreador'], [18, 'Caçador']],
+        'Escoteiro' => [[4, 'Pistas'], [8, 'Trilha'], [13, 'Rumo'], [18, 'Travessia']],
+        'Sênior' => [[6, 'Escalada'], [12, 'Conquista'], [18, 'Azimute']],
+        'Pioneiro' => [[6, 'Descoberta'], [12, 'Destino'], [18, 'Horizonte']],
     ];
 
     protected const NOMES_RECONHECIMENTO = [
@@ -72,6 +78,65 @@ class EtapaProgressaoService
     protected const PIONEIRO_CHAVES_INSIGNIA_BP = [
         'pioneiro_antigo_projeto_relevante_executado',
         'pioneiro_antigo_revisao_plano_pessoal',
+    ];
+
+    /**
+     * Extensões aceitas pra imagem estática de etapa/reconhecimento, na
+     * ordem em que são procuradas — o nome do arquivo em si não carrega
+     * extensão nos mapas abaixo, só o "slug"; `resolverImagemEstatica()`
+     * testa cada uma até achar o arquivo (svg é o que você está usando).
+     */
+    protected const EXTENSOES_IMAGEM_ESTATICA = ['svg', 'png', 'webp', 'jpg', 'jpeg'];
+
+    /**
+     * Slug do arquivo (dentro de `public/images/reconhecimentos/`, sem
+     * extensão) do distintivo máximo de cada ramo — mesmo raciocínio das
+     * imagens de etapa (arquivo estático, sem upload pelo admin). Uma
+     * entrada por ramo só, não por sistema/antigo-novo: é o mesmo
+     * distintivo físico nos dois (só o texto do nome varia um pouco entre
+     * `NOMES_RECONHECIMENTO['antigo']` e `['novo']` pra Sênior/Pioneiro).
+     */
+    protected const IMAGENS_RECONHECIMENTO = [
+        'Lobinho' => 'cruzeiro-do-sul',
+        'Escoteiro' => 'lis-de-ouro',
+        'Sênior' => 'escoteiro-da-patria',
+        'Pioneiro' => 'insignia-de-bp',
+    ];
+
+    /**
+     * Slug do arquivo (dentro de `public/images/etapas/`, sem extensão)
+     * pra cada etapa do Programa Novo — arquivo estático subido direto no
+     * repo/servidor (não tem upload pelo admin, são poucas imagens e mudam
+     * raramente). Sem prefixo de ramo no nome do arquivo de propósito: os
+     * 14 nomes de etapa são únicos entre si (nenhum se repete em outro
+     * ramo), então o nome puro já basta — mantido agrupado por ramo aqui
+     * só pra organização do código. Sem entrada aqui, ou sem o arquivo
+     * físico (em nenhuma das `EXTENSOES_IMAGEM_ESTATICA`), `imagemEtapa()`
+     * simplesmente não mostra imagem — nunca quebra a tela.
+     */
+    protected const IMAGENS_ETAPA_NOVO = [
+        'Lobinho' => [
+            'Pata Tenra' => 'pata-tenra',
+            'Saltador' => 'saltador',
+            'Rastreador' => 'rastreador',
+            'Caçador' => 'cacador',
+        ],
+        'Escoteiro' => [
+            'Pistas' => 'pistas',
+            'Trilha' => 'trilha',
+            'Rumo' => 'rumo',
+            'Travessia' => 'travessia',
+        ],
+        'Sênior' => [
+            'Escalada' => 'escalada',
+            'Conquista' => 'conquista',
+            'Azimute' => 'azimute',
+        ],
+        'Pioneiro' => [
+            'Descoberta' => 'descoberta',
+            'Destino' => 'destino',
+            'Horizonte' => 'horizonte',
+        ],
     ];
 
     public function nomeReconhecimento(Ramo $ramo, string $sistema): string
@@ -155,20 +220,19 @@ class EtapaProgressaoService
         return match ($ramoNome) {
             'Lobinho' => [
                 ['chave' => 'lobinho_novo_desafio_pessoal', 'tipo' => 'booleano', 'label' => 'Desafio pessoal'],
-                ['chave' => 'lobinho_novo_avaliacao_pares', 'tipo' => 'booleano', 'label' => 'Avaliação dos pares'],
+                ['chave' => 'lobinho_novo_avaliacao_pares', 'tipo' => 'booleano', 'label' => 'Avaliação dos pares e autoavaliação'],
             ],
             'Escoteiro' => [
                 ['chave' => 'escoteiro_novo_desafio_pessoal_travessia', 'tipo' => 'booleano', 'label' => 'Desafio pessoal da Travessia'],
-                ['chave' => 'escoteiro_novo_autoavaliacao', 'tipo' => 'booleano', 'label' => 'Autoavaliação'],
-                ['chave' => 'escoteiro_novo_avaliacao_corte_honra_escotistas', 'tipo' => 'booleano', 'label' => 'Avaliação da Corte de Honra e dos escotistas'],
+                ['chave' => 'escoteiro_novo_avaliacao_pares', 'tipo' => 'booleano', 'label' => 'Avaliação dos pares e autoavaliação'],
             ],
             'Sênior' => [
                 ['chave' => 'senior_novo_desafio_pessoal', 'tipo' => 'booleano', 'label' => 'Desafio pessoal'],
-                ['chave' => 'senior_novo_avaliacao_pares', 'tipo' => 'booleano', 'label' => 'Avaliação dos pares'],
+                ['chave' => 'senior_novo_avaliacao_pares', 'tipo' => 'booleano', 'label' => 'Avaliação dos pares e autoavaliação'],
             ],
             'Pioneiro' => [
                 ['chave' => 'pioneiro_novo_desafio_pessoal', 'tipo' => 'booleano', 'label' => 'Desafio pessoal'],
-                ['chave' => 'pioneiro_novo_avaliacao_pares', 'tipo' => 'booleano', 'label' => 'Avaliação dos pares'],
+                ['chave' => 'pioneiro_novo_avaliacao_pares', 'tipo' => 'booleano', 'label' => 'Avaliação dos pares e autoavaliação'],
             ],
             default => [],
         };
@@ -366,6 +430,221 @@ class EtapaProgressaoService
         }
 
         return end($cortes)[1];
+    }
+
+    /**
+     * Trilha completa de progressão do Programa Novo pra tela Início: um
+     * marco por Etapa do ramo (4 pra Lobinho/Escoteiro, 3 pra Sênior/
+     * Pioneiro — a última já bate exatamente nos 18 blocos) seguida por um
+     * marco final do Reconhecimento — o distintivo máximo do ramo, que só
+     * fica "alcançado" quando `elegivelReconhecimentoNovo()` for true (os
+     * mesmos 18 blocos da última Etapa, E os requisitos complementares,
+     * não só o corte de blocos).
+     *
+     * `progresso` é o preenchimento (0.0-1.0) de cada distintivo — **não**
+     * é relativo ao corte anterior, é `concluidos / corte_desse_marco`
+     * (capado em 1.0). Como os cortes são cumulativos (todos contam a
+     * partir do mesmo conjunto de 18 blocos, cada Etapa exigindo mais que
+     * a anterior), blocos já concluídos hoje contam de verdade a favor de
+     * QUALQUER Etapa futura também — ex.: 4 de 18 blocos já é ~22% de
+     * caminho andado rumo à Travessia, não 0%, mesmo sem ter fechado as
+     * etapas intermediárias ainda. Isso forma uma "escada" onde cada
+     * distintivo mais distante mostra uma fração menor (mesmo numerador,
+     * denominador maior), sempre com um número real, nunca inventado.
+     *
+     * Pro Reconhecimento (cujo corte de blocos é sempre igual ao da última
+     * Etapa) o preenchimento é a média entre o progresso de blocos
+     * (`concluidos/18`) e a fração de requisitos complementares
+     * satisfeitos, senão o distintivo apareceria sempre 100% cheio assim
+     * que a última Etapa fosse alcançada, mesmo com requisitos pendentes.
+     *
+     * `data_alcancado` é a data em que aquele corte de blocos foi batido
+     * (o N-ésimo bloco concluído, em ordem cronológica — ver
+     * `dataCorteEtapaNovo()`), null se ainda não alcançou.
+     *
+     * @return array<int, array{tipo: string, label: string, imagem_url: ?string, imagem_data_uri: ?string, alcancado: bool, atual: bool, faltam: int, progresso: float, data_alcancado: ?Carbon}>
+     */
+    public function trilhaEtapaNovo(Jovem $jovem): array
+    {
+        $cortes = self::CORTES_ETAPA_NOVO[$jovem->ramoAtual->nome] ?? null;
+
+        if ($cortes === null) {
+            return [];
+        }
+
+        $concluidos = $this->statusService->percentualNovo($jovem)['concluidos'];
+        $ramoNome = $jovem->ramoAtual->nome;
+
+        $trilha = [];
+
+        foreach ($cortes as [$maximo, $label]) {
+            $alcancado = $concluidos >= $maximo;
+
+            $trilha[] = [
+                'tipo' => 'etapa',
+                'label' => $label,
+                'imagem_url' => $this->imagemEtapa($ramoNome, $label),
+                // Só computa a data URI (leitura de arquivo + base64) pros marcos já
+                // alcançados - é a única situação em que o botão de compartilhar aparece.
+                'imagem_data_uri' => $alcancado ? $this->dataUriImagemEtapa($ramoNome, $label) : null,
+                'alcancado' => $alcancado,
+                'faltam' => max(0, $maximo - $concluidos),
+                'progresso' => min(1.0, $concluidos / $maximo),
+                'data_alcancado' => $alcancado ? $this->dataCorteEtapaNovo($jovem, $maximo) : null,
+            ];
+        }
+
+        $elegivelReconhecimento = $this->elegivelReconhecimentoNovo($jovem);
+        $progressoBlocos = min(1.0, $concluidos / 18);
+        $progressoRequisitos = $this->fracaoRequisitosComplementaresNovo($jovem);
+
+        $trilha[] = [
+            'tipo' => 'reconhecimento',
+            'label' => $this->nomeReconhecimento($jovem->ramoAtual, 'novo'),
+            'imagem_url' => $this->imagemReconhecimento($jovem->ramoAtual),
+            'imagem_data_uri' => $elegivelReconhecimento ? $this->dataUriImagemReconhecimento($jovem->ramoAtual) : null,
+            'alcancado' => $elegivelReconhecimento,
+            'faltam' => max(0, 18 - $concluidos),
+            'progresso' => ($progressoBlocos + $progressoRequisitos) / 2,
+            'data_alcancado' => $elegivelReconhecimento ? $this->dataCorteEtapaNovo($jovem, 18) : null,
+        ];
+
+        $indiceAtual = collect($trilha)->search(fn (array $marco) => ! $marco['alcancado']);
+
+        foreach ($trilha as $indice => &$marco) {
+            $marco['atual'] = $indiceAtual === false
+                ? $indice === array_key_last($trilha)
+                : $indice === $indiceAtual;
+        }
+
+        unset($marco);
+
+        return $trilha;
+    }
+
+    /**
+     * Data em que o jovem bateu um corte específico de blocos concluídos
+     * (ex.: o 4º bloco concluído, em ordem cronológica, pra saber quando
+     * "Pata Tenra" foi alcançada) — mesma ideia de
+     * {@see StatusProgressaoService::dataNivelEspecialidade()}, só que sobre
+     * blocos em vez de itens de especialidade. Null se o jovem ainda não
+     * chegou nesse corte, ou se algum dos blocos que fecharam foi creditado
+     * só por equivalência (sem `data_conclusao` própria).
+     */
+    public function dataCorteEtapaNovo(Jovem $jovem, int $corte): ?Carbon
+    {
+        $blocos = BlocoNovo::query()
+            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
+            ->with('itens')
+            ->get();
+
+        $datas = $blocos
+            ->map(fn (BlocoNovo $bloco) => $this->statusService->dataConclusaoBloco($jovem, $bloco))
+            ->filter()
+            ->sort()
+            ->values();
+
+        return $datas->get($corte - 1);
+    }
+
+    /**
+     * Fração (0.0-1.0) dos requisitos complementares do Programa Novo já
+     * satisfeitos pro ramo do jovem — usada só pra compor o preenchimento
+     * do distintivo de Reconhecimento na trilha (Fase 12), não pra
+     * elegibilidade oficial (que continua em `elegivelReconhecimentoNovo()`,
+     * exigindo TODOS, não uma fração).
+     */
+    private function fracaoRequisitosComplementaresNovo(Jovem $jovem): float
+    {
+        $chaves = $this->chavesComplementaresNovo($jovem->ramoAtual->nome);
+
+        if (empty($chaves)) {
+            return 1.0;
+        }
+
+        $satisfeitos = collect($chaves)->filter(fn (array $chaveDef) => $this->chaveSatisfeita($jovem, $chaveDef))->count();
+
+        return $satisfeitos / count($chaves);
+    }
+
+    /**
+     * URL da imagem da etapa do Programa Novo, se o arquivo já foi subido
+     * (ver `public/images/etapas/`). `$nomeEtapa` aceita tanto o nome puro
+     * ("Saltador") quanto a variante "X concluído(a)" que `etapaNovo()`
+     * devolve na última etapa — as duas usam a mesma imagem.
+     */
+    public function imagemEtapa(string $ramoNome, string $nomeEtapa): ?string
+    {
+        $nomeBase = preg_replace('/\s+conclu[ií]d[ao]$/u', '', $nomeEtapa);
+        $slug = self::IMAGENS_ETAPA_NOVO[$ramoNome][$nomeBase] ?? null;
+
+        return $slug ? $this->resolverImagemEstatica('images/etapas', $slug) : null;
+    }
+
+    /**
+     * URL da imagem do distintivo máximo (Reconhecimento) do ramo, se o
+     * arquivo já foi subido (ver `public/images/reconhecimentos/`).
+     */
+    public function imagemReconhecimento(Ramo $ramo): ?string
+    {
+        $slug = self::IMAGENS_RECONHECIMENTO[$ramo->nome] ?? null;
+
+        return $slug ? $this->resolverImagemEstatica('images/reconhecimentos', $slug) : null;
+    }
+
+    /**
+     * Mesma imagem de {@see imagemEtapa()}, mas como data URI base64 em vez
+     * de URL — usado só pelo cartão de conquista compartilhável (ver
+     * {@see ImagemDataUriService}).
+     */
+    public function dataUriImagemEtapa(string $ramoNome, string $nomeEtapa): ?string
+    {
+        $nomeBase = preg_replace('/\s+conclu[ií]d[ao]$/u', '', $nomeEtapa);
+        $slug = self::IMAGENS_ETAPA_NOVO[$ramoNome][$nomeBase] ?? null;
+
+        return $slug ? app(ImagemDataUriService::class)->paraCaminho($this->caminhoImagemEstatica('images/etapas', $slug)) : null;
+    }
+
+    /**
+     * Mesma imagem de {@see imagemReconhecimento()}, mas como data URI
+     * base64 em vez de URL — usado só pelo cartão de conquista
+     * compartilhável (ver {@see ImagemDataUriService}).
+     */
+    public function dataUriImagemReconhecimento(Ramo $ramo): ?string
+    {
+        $slug = self::IMAGENS_RECONHECIMENTO[$ramo->nome] ?? null;
+
+        return $slug ? app(ImagemDataUriService::class)->paraCaminho($this->caminhoImagemEstatica('images/reconhecimentos', $slug)) : null;
+    }
+
+    /**
+     * Procura `{$pasta}/{$slug}.{ext}` em `public/`, testando cada extensão
+     * de `EXTENSOES_IMAGEM_ESTATICA` na ordem, e devolve a URL pública da
+     * primeira que existir — ou `null` se nenhuma existir ainda.
+     */
+    private function resolverImagemEstatica(string $pasta, string $slug): ?string
+    {
+        $caminho = $this->caminhoImagemEstatica($pasta, $slug);
+
+        return $caminho ? asset(Str::after($caminho, public_path().'/')) : null;
+    }
+
+    /**
+     * Caminho absoluto de `{$pasta}/{$slug}.{ext}` dentro de `public/`,
+     * testando cada extensão de `EXTENSOES_IMAGEM_ESTATICA` na ordem — ou
+     * `null` se nenhuma existir ainda.
+     */
+    private function caminhoImagemEstatica(string $pasta, string $slug): ?string
+    {
+        foreach (self::EXTENSOES_IMAGEM_ESTATICA as $extensao) {
+            $caminhoAbsoluto = public_path("{$pasta}/{$slug}.{$extensao}");
+
+            if (file_exists($caminhoAbsoluto)) {
+                return $caminhoAbsoluto;
+            }
+        }
+
+        return null;
     }
 
     // ------------------------------------------------------------------
