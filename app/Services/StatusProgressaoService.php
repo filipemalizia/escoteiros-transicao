@@ -194,7 +194,17 @@ class StatusProgressaoService
         $obrigatoriasSatisfeitas = $obrigatoriasNecessarias === 0 || $obrigatoriasConcluidas === $obrigatoriasNecessarias;
         $variaveisSatisfeitas = $variaveisNecessarias === 0 || $variaveisConcluidas >= $variaveisNecessarias;
 
-        $concluido = $obrigatoriasSatisfeitas && ($variaveisSatisfeitas || $substitutivaConcluida);
+        /**
+         * Um bloco sem nenhum item Obrigatória/Variável/Substitutiva visível
+         * pra este jovem (ex.: cadastro incompleto, ou todos os itens são de
+         * outra modalidade) nunca conta como "Concluído" só porque as duas
+         * condições acima ficam vacuamente satisfeitas (0 de 0) — sem isso,
+         * um bloco vazio aparecia 100% concluído pra um jovem recém-criado,
+         * sem ele ter feito nada.
+         */
+        $temAlgumItemAcionavel = $obrigatoriasNecessarias > 0 || $variaveis->isNotEmpty() || $substitutivas->isNotEmpty();
+
+        $concluido = $temAlgumItemAcionavel && $obrigatoriasSatisfeitas && ($variaveisSatisfeitas || $substitutivaConcluida);
         $algumConcluido = $obrigatoriasConcluidas > 0 || $variaveisConcluidas > 0 || $substitutivaConcluida;
 
         $status = match (true) {
