@@ -59,6 +59,16 @@ it('bloco sem nenhuma variavel exigida conta so a parte obrigatoria no percentua
     expect($gamificado['percentual'])->toBe(50.0);
 });
 
+it('bloco sem nenhuma obrigatoria nem variavel conta 0% no percentual gamificado, nunca 100%', function () {
+    $service = new StatusProgressaoService;
+    $ramo = Ramo::create(['nome' => 'Sênior']);
+    $jovem = Jovem::create(['nome' => 'Jovem de Teste', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $ramo->id]);
+    $eixo = EixoNovo::create(['ramo_id' => $ramo->id, 'nome' => 'Eixo Corporal']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco vazio']);
+
+    expect($service->percentualGamificadoBloco($jovem, $bloco))->toBe(0.0);
+});
+
 it('calcula a data de conclusao de um bloco pela maior data entre obrigatorias e as variaveis mais antigas necessarias', function () {
     $service = new StatusProgressaoService;
     $ramo = Ramo::create(['nome' => 'Sênior']);
