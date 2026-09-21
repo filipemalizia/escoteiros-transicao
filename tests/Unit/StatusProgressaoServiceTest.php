@@ -161,6 +161,33 @@ it('nunca marca bloco como Concluído se falta obrigatoria, mesmo com variaveis 
         ->and($status['obrigatorias_necessarias'])->toBe(1);
 });
 
+it('nunca marca bloco como Concluído quando ele nao tem nenhum item Obrigatoria/Variavel/Substitutiva', function () {
+    // Bug real: sem nenhum item, obrigatorias_necessarias e variaveis_necessarias
+    // ficam em 0, então as duas condições ficavam vacuamente satisfeitas (0
+    // de 0) e o bloco aparecia "Concluído" pra um jovem recém-criado, sem
+    // ele ter feito nada — daí o % de progresso já vinha acima de 0%.
+    $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco sem itens']);
+
+    $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
+
+    expect($status['status'])->toBe('Pendente')
+        ->and($status['obrigatorias_necessarias'])->toBe(0)
+        ->and($status['variaveis_necessarias'])->toBe(0);
+});
+
+it('nunca marca bloco como Concluído quando os unicos itens sao de outra modalidade', function () {
+    $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco só de Mar']);
+    ItemNovo::create(['bloco_id' => $bloco->id, 'codigo' => 'MAR-001', 'descricao' => 'Obg do Mar', 'tipo_acao' => 'Obrigatória', 'modalidade' => 'Mar']);
+
+    // $this->jovem não tem Equipe, então cai na modalidade default 'Básica'
+    // — o único item do bloco (Mar) fica invisível pra ele.
+    $status = $this->service->statusBloco($this->jovem, $bloco->fresh());
+
+    expect($status['status'])->toBe('Pendente');
+});
+
 it('calcula percentuais e pendencias do programa novo corretamente', function () {
     $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Habilidades para a Vida']);
 
