@@ -62,6 +62,19 @@ it('nao mostra especialidades de outro ramo', function () {
     Livewire::test(Catalogo::class, ['tipo' => 'especialidades'])->assertDontSee('Agricultura');
 });
 
+it('mostra insignia ligada direto ao ramo, sem nenhum eixo', function () {
+    $insigniaDoRamo = EspecialidadeDistintivo::create(['nome' => 'Insígnia da Alcateia', 'tipo' => 'Insígnia', 'estrutura' => 'atividades_temas']);
+    $insigniaDoRamo->ramos()->attach($this->ramo->id);
+
+    Livewire::test(Catalogo::class, ['tipo' => 'insignias'])->assertSee('Insígnia da Alcateia');
+
+    $outroRamo = Ramo::create(['nome' => 'Sênior']);
+    $insigniaDeOutroRamo = EspecialidadeDistintivo::create(['nome' => 'Insígnia Pioneira', 'tipo' => 'Insígnia', 'estrutura' => 'atividades_temas']);
+    $insigniaDeOutroRamo->ramos()->attach($outroRamo->id);
+
+    Livewire::test(Catalogo::class, ['tipo' => 'insignias'])->assertDontSee('Insígnia Pioneira');
+});
+
 it('filtra por busca de nome', function () {
     Livewire::test(Catalogo::class, ['tipo' => 'especialidades'])
         ->set('busca', 'acampa')

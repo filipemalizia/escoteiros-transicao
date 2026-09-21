@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\EquivalenciaCreditoService;
+use App\Services\EspecialidadeStatusService;
 use App\Services\StatusProgressaoService;
 use Filament\Tables\Table;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -23,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
         // `app(...::class)` (chamado repetidas vezes na tela de progresso)
         // criaria uma instância nova e o cache nunca teria efeito, mantendo
         // o N+1 que causava lentidão no portal do jovem e no painel.
+        $this->app->singleton(EspecialidadeStatusService::class);
         $this->app->singleton(EquivalenciaCreditoService::class);
         $this->app->singleton(StatusProgressaoService::class);
     }

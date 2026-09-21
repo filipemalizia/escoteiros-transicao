@@ -74,7 +74,7 @@ class Catalogo extends Component
     {
         $especialidades = EspecialidadeDistintivo::query()
             ->where('tipo', $this->tipo)
-            ->whereHas('eixosNovos', fn ($query) => $query->where('ramo_id', $this->jovem()->ramo_atual_id))
+            ->paraRamo($this->jovem()->ramo_atual_id)
             ->when(
                 $this->tipo === 'Insígnia',
                 fn ($query) => $query->where(fn ($query) => $query
@@ -83,7 +83,7 @@ class Catalogo extends Component
                 ),
             )
             ->when($this->busca, fn ($query) => $query->where('nome', 'like', '%'.$this->busca.'%'))
-            ->when($this->eixoId, fn ($query) => $query->whereHas(
+            ->when($this->tipo !== 'Insígnia' && $this->eixoId, fn ($query) => $query->whereHas(
                 'eixosNovos',
                 fn ($query) => $query->where('eixos_novos.id', $this->eixoId),
             ))
@@ -91,7 +91,7 @@ class Catalogo extends Component
             ->orderBy('nome')
             ->get();
 
-        if ($this->aba === 'minhas') {
+        if ($this->tipo !== 'Insígnia' && $this->aba === 'minhas') {
             $especialidades = $especialidades->filter(
                 fn (EspecialidadeDistintivo $especialidade) => $this->statusEspecialidade($especialidade)['status'] !== 'Pendente'
             )->values();
@@ -113,7 +113,7 @@ class Catalogo extends Component
 
         return EspecialidadeDistintivo::query()
             ->where('id', $this->especialidadeAbertaId)
-            ->whereHas('eixosNovos', fn ($query) => $query->where('ramo_id', $this->jovem()->ramo_atual_id))
+            ->paraRamo($this->jovem()->ramo_atual_id)
             ->with('grupos.itens')
             ->first();
     }
@@ -155,8 +155,8 @@ class Catalogo extends Component
         $disponivelParaORamo = EspecialidadeDistintivoItem::query()
             ->where('id', $especialidadeDistintivoItemId)
             ->whereHas(
-                'grupo.especialidadeDistintivo.eixosNovos',
-                fn ($query) => $query->where('ramo_id', $this->jovem()->ramo_atual_id),
+                'grupo.especialidadeDistintivo',
+                fn ($query) => $query->paraRamo($this->jovem()->ramo_atual_id),
             )
             ->exists();
 

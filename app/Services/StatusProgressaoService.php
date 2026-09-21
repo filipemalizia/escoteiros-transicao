@@ -36,12 +36,6 @@ class StatusProgressaoService
     /** @var array<string, array<string, mixed>> */
     private array $cacheStatusBloco = [];
 
-    /** @var array<string, array<string, mixed>> */
-    private array $cacheStatusEspecialidade = [];
-
-    /** @var array<int, array<int, int>> */
-    private array $cacheItensEspecialidadeConcluidos = [];
-
     /** @var array<int, array<int, Carbon>> */
     private array $cacheDatasItensEspecialidadeConcluidos = [];
 
@@ -53,23 +47,23 @@ class StatusProgressaoService
 
     public function __construct(
         private readonly EquivalenciaCreditoService $creditoService = new EquivalenciaCreditoService,
+        private readonly EspecialidadeStatusService $especialidadeStatusService = new EspecialidadeStatusService,
     ) {}
 
     /**
-     * Esquece todo o cache memoizado (o próprio e o do
-     * {@see EquivalenciaCreditoService} injetado) — chamar sempre que
-     * `concluido` for alterado em `progresso_antigo`/`progresso_novo`.
+     * Esquece todo o cache memoizado (o próprio e o dos serviços injetados)
+     * — chamar sempre que `concluido` for alterado em
+     * `progresso_antigo`/`progresso_novo`/`progresso_especialidade`.
      */
     public function limparCache(): void
     {
         $this->cacheStatusCompetencia = [];
         $this->cacheStatusBloco = [];
-        $this->cacheStatusEspecialidade = [];
-        $this->cacheItensEspecialidadeConcluidos = [];
         $this->cacheDatasItensEspecialidadeConcluidos = [];
         $this->cacheDatasItensNovosConcluidos = [];
         $this->cacheDatasItensPersonalizadosConcluidos = [];
         $this->creditoService->limparCache();
+        $this->especialidadeStatusService->limparCache();
     }
 
     /**
@@ -234,63 +228,7 @@ class StatusProgressaoService
      */
     public function statusEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade): array
     {
-        $chaveCache = "{$jovem->id}:{$especialidade->id}";
-
-        return $this->cacheStatusEspecialidade[$chaveCache] ??= $this->calcularStatusEspecialidade($jovem, $especialidade);
-    }
-
-    /**
-     * @return array{status: string, nivel_atingido: int|null, itens_concluidos: int, itens_totais: int, grupos: array<int, array{grupo: EspecialidadeDistintivoGrupo, concluidos: int, necessarios: int, necessarios_totais: int, satisfeito: bool}>}
-     */
-    private function calcularStatusEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade): array
-    {
-        $gruposStatus = $especialidade->grupos->map(fn (EspecialidadeDistintivoGrupo $grupo) => [
-            'grupo' => $grupo,
-            ...$this->statusGrupoEspecialidade($jovem, $grupo),
-        ]);
-
-        if ($especialidade->estrutura === 'itens_niveis') {
-            $grupoItens = $gruposStatus->firstWhere('grupo.chave', 'itens');
-            $itensConcluidos = $grupoItens['concluidos'] ?? 0;
-            $itensTotais = $grupoItens['necessarios_totais'] ?? 0;
-
-            $nivelAtingido = match (true) {
-                $especialidade->minimo_nivel_2 !== null && $itensConcluidos >= $especialidade->minimo_nivel_2 => 2,
-                $especialidade->minimo_nivel_1 !== null && $itensConcluidos >= $especialidade->minimo_nivel_1 => 1,
-                default => 0,
-            };
-
-            $status = match (true) {
-                $nivelAtingido >= 1 => 'Concluído',
-                $itensConcluidos > 0 => 'Parcial',
-                default => 'Pendente',
-            };
-
-            return [
-                'status' => $status,
-                'nivel_atingido' => $nivelAtingido,
-                'itens_concluidos' => $itensConcluidos,
-                'itens_totais' => $itensTotais,
-                'grupos' => $gruposStatus->all(),
-            ];
-        }
-
-        $todosSatisfeitos = $gruposStatus->isNotEmpty() && $gruposStatus->every(fn (array $g) => $g['satisfeito']);
-        $algumConcluido = $gruposStatus->contains(fn (array $g) => $g['concluidos'] > 0);
-
-        $status = match (true) {
-            $todosSatisfeitos => 'Concluído',
-            $algumConcluido => 'Parcial',
-            default => 'Pendente',
-        };
-
-        return [
-            'status' => $status,
-            'nivel_atingido' => null,
-            'itens_concluidos' => $gruposStatus->sum('concluidos'),
-            'itens_totais' => $gruposStatus->sum('necessarios_totais'),
-            'grupos' => $gruposStatus->all(),
-        ];
+        return $this->especialidadeStatusService->statusEspecialidade($jovem, $especialidade);
     }
 
     /**
@@ -298,46 +236,7 @@ class StatusProgressaoService
      */
     public function statusGrupoEspecialidade(Jovem $jovem, EspecialidadeDistintivoGrupo $grupo): array
     {
-        $itens = $grupo->itens;
-        $necessariosTotais = $itens->count();
-        // null = todos os itens do grupo são obrigatórios (igual quantidade_minima_variaveis do Bloco).
-        $necessarios = $grupo->quantidade_minima ?? $necessariosTotais;
-
-        $concluidos = $itens
-            ->filter(fn (EspecialidadeDistintivoItem $item) => $this->itemEspecialidadeConcluido($jovem, $item))
-            ->count();
-
-        return [
-            'concluidos' => $concluidos,
-            'necessarios' => $necessarios,
-            'necessarios_totais' => $necessariosTotais,
-            'satisfeito' => $necessarios === 0 || $concluidos >= $necessarios,
-        ];
-    }
-
-    /**
-     * Antes fazia um exists() por item, sem cache nenhum — numa lista com
-     * dezenas de Especialidades/Insígnias (várias com vários itens cada),
-     * isso virava centenas de queries repetidas a cada interação (abrir/
-     * fechar modal, digitar na busca), já que o Livewire re-renderiza o
-     * componente inteiro. Agora carrega tudo de uma vez por jovem.
-     */
-    private function itemEspecialidadeConcluido(Jovem $jovem, EspecialidadeDistintivoItem $item): bool
-    {
-        return isset($this->itensEspecialidadeConcluidos($jovem)[$item->id]);
-    }
-
-    /**
-     * @return array<int, int>
-     */
-    private function itensEspecialidadeConcluidos(Jovem $jovem): array
-    {
-        return $this->cacheItensEspecialidadeConcluidos[$jovem->id] ??= ProgressoEspecialidade::query()
-            ->where('jovem_id', $jovem->id)
-            ->where('concluido', true)
-            ->pluck('especialidade_distintivo_item_id')
-            ->flip()
-            ->all();
+        return $this->especialidadeStatusService->statusGrupoEspecialidade($jovem, $grupo);
     }
 
     /**

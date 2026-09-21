@@ -386,7 +386,7 @@ trait ExibeProgressoDoJovem
     public function getEspecialidadesDisponiveis(): Collection
     {
         return EspecialidadeDistintivo::query()
-            ->whereHas('eixosNovos', fn ($query) => $query->where('ramo_id', $this->jovem()->ramo_atual_id))
+            ->paraRamo($this->jovem()->ramo_atual_id)
             ->with('grupos.itens')
             ->orderBy('nome')
             ->get();

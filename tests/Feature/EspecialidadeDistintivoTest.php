@@ -3,9 +3,13 @@
 use App\Filament\Resources\EspecialidadeDistintivos\Pages\CreateEspecialidadeDistintivo;
 use App\Filament\Resources\EspecialidadeDistintivos\Pages\EditEspecialidadeDistintivo;
 use App\Filament\Resources\EspecialidadeDistintivos\RelationManagers\GruposRelationManager;
+use App\Models\BlocoNovo;
 use App\Models\EixoNovo;
 use App\Models\EspecialidadeDistintivo;
 use App\Models\EspecialidadeDistintivoItem;
+use App\Models\ItemNovo;
+use App\Models\Jovem;
+use App\Models\ProgressoNovo;
 use App\Models\Ramo;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -36,6 +40,36 @@ it('liga uma especialidade a mais de um eixo (ramo+eixo) ao mesmo tempo', functi
 
     // inverso: o EixoNovo também enxerga a especialidade
     expect($eixoLobinho->fresh()->especialidadesDistintivos)->toHaveCount(1);
+});
+
+it('liga uma insignia direto a um ramo, sem nenhum eixo', function () {
+    $lobinho = Ramo::create(['nome' => 'Lobinho']);
+    $escoteiro = Ramo::create(['nome' => 'Escoteiro']);
+
+    $insignia = EspecialidadeDistintivo::create(['nome' => 'Insígnia da Alcateia', 'tipo' => 'Insígnia']);
+    $insignia->ramos()->attach($lobinho->id);
+
+    expect($insignia->ramos)->toHaveCount(1)
+        ->and($insignia->eixosNovos)->toHaveCount(0)
+        ->and($lobinho->fresh()->especialidadesDistintivos)->toHaveCount(1);
+
+    expect(EspecialidadeDistintivo::query()->paraRamo($lobinho->id)->get())->toHaveCount(1)
+        ->and(EspecialidadeDistintivo::query()->paraRamo($escoteiro->id)->get())->toHaveCount(0);
+});
+
+it('scopeParaRamo encontra especialidade tanto via eixo quanto via ramo direto', function () {
+    [$eixoLobinho] = criarEixosMeioAmbiente();
+    $lobinho = $eixoLobinho->ramo;
+
+    $viaEixo = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade']);
+    $viaEixo->eixosNovos()->attach($eixoLobinho->id);
+
+    $viaRamoDireto = EspecialidadeDistintivo::create(['nome' => 'Insígnia da Alcateia', 'tipo' => 'Insígnia']);
+    $viaRamoDireto->ramos()->attach($lobinho->id);
+
+    $ids = EspecialidadeDistintivo::query()->paraRamo($lobinho->id)->pluck('id')->sort()->values();
+
+    expect($ids->all())->toBe([$viaEixo->id, $viaRamoDireto->id]);
 });
 
 it('grupo com quantidade_minima null exige todos os itens; com numero exige so aquele minimo', function () {
@@ -133,4 +167,62 @@ it('admin cria um grupo via relation manager', function () {
     expect($grupo)->not->toBeNull()
         ->and($grupo->quantidade_minima)->toBe(4)
         ->and($grupo->itens)->toHaveCount(2);
+});
+
+it('bloqueia a exclusao de uma especialidade com item que tem progresso concluido', function () {
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
+
+    $ramo = Ramo::create(['nome' => 'Sênior']);
+    $jovem = Jovem::create([
+        'nome' => 'Jovem de Teste',
+        'data_nascimento' => '2010-01-01',
+        'ramo_atual_id' => $ramo->id,
+    ]);
+    $eixo = EixoNovo::create(['ramo_id' => $ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco']);
+
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade']);
+    $item = ItemNovo::create([
+        'bloco_id' => $bloco->id,
+        'especialidade_id' => $especialidade->id,
+        'codigo' => 'ACP-001',
+        'descricao' => 'Item 1',
+        'tipo_acao' => 'Obrigatória',
+    ]);
+
+    ProgressoNovo::create([
+        'jovem_id' => $jovem->id,
+        'item_novo_id' => $item->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+
+    Livewire::test(EditEspecialidadeDistintivo::class, ['record' => $especialidade->getKey()])
+        ->callAction('delete')
+        ->assertNotified('Não é possível excluir esta especialidade/insígnia');
+
+    expect(EspecialidadeDistintivo::find($especialidade->id))->not->toBeNull();
+});
+
+it('permite excluir uma especialidade sem dados vinculados, apagando os itens em cascata', function () {
+    $this->actingAs(User::factory()->create(['is_admin' => true]));
+
+    $ramo = Ramo::create(['nome' => 'Sênior']);
+    $eixo = EixoNovo::create(['ramo_id' => $ramo->id, 'nome' => 'Habilidades para a Vida']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco']);
+
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade']);
+    $item = ItemNovo::create([
+        'bloco_id' => $bloco->id,
+        'especialidade_id' => $especialidade->id,
+        'codigo' => 'ACP-002',
+        'descricao' => 'Item 1',
+        'tipo_acao' => 'Obrigatória',
+    ]);
+
+    Livewire::test(EditEspecialidadeDistintivo::class, ['record' => $especialidade->getKey()])
+        ->callAction('delete');
+
+    expect(EspecialidadeDistintivo::find($especialidade->id))->toBeNull()
+        ->and(ItemNovo::find($item->id))->toBeNull();
 });

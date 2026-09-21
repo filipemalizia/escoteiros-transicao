@@ -19,22 +19,24 @@
 @endphp
 
 <div>
-    <div class="mb-4 flex gap-2">
-        <button
-            type="button"
-            wire:click="$set('aba', 'minhas')"
-            class="rounded-lg px-3 py-1.5 text-sm font-medium {{ $aba === 'minhas' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200' }}"
-        >
-            Minhas Especialidades
-        </button>
-        <button
-            type="button"
-            wire:click="$set('aba', 'todas')"
-            class="rounded-lg px-3 py-1.5 text-sm font-medium {{ $aba === 'todas' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200' }}"
-        >
-            Todas
-        </button>
-    </div>
+    @if ($tipo !== 'Insígnia')
+        <div class="mb-4 flex gap-2">
+            <button
+                type="button"
+                wire:click="$set('aba', 'minhas')"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium {{ $aba === 'minhas' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200' }}"
+            >
+                Minhas Especialidades
+            </button>
+            <button
+                type="button"
+                wire:click="$set('aba', 'todas')"
+                class="rounded-lg px-3 py-1.5 text-sm font-medium {{ $aba === 'todas' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200' }}"
+            >
+                Todas
+            </button>
+        </div>
+    @endif
 
     <div class="mb-4 flex flex-col gap-3 sm:flex-row">
         <input
@@ -43,15 +45,17 @@
             placeholder="Buscar por nome..."
             class="flex-1 rounded-lg border-gray-300 text-sm placeholder:text-gray-400 focus:border-gray-500 focus:ring-gray-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
         />
-        <select
-            wire:model.live="eixoId"
-            class="rounded-lg border-gray-300 text-sm focus:border-gray-500 focus:ring-gray-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
-        >
-            <option value="">Todos os eixos</option>
-            @foreach ($eixos as $eixo)
-                <option value="{{ $eixo->id }}">{{ $eixo->nome }}</option>
-            @endforeach
-        </select>
+        @if ($tipo !== 'Insígnia')
+            <select
+                wire:model.live="eixoId"
+                class="rounded-lg border-gray-300 text-sm focus:border-gray-500 focus:ring-gray-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+            >
+                <option value="">Todos os eixos</option>
+                @foreach ($eixos as $eixo)
+                    <option value="{{ $eixo->id }}">{{ $eixo->nome }}</option>
+                @endforeach
+            </select>
+        @endif
     </div>
 
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -127,12 +131,17 @@
 
             @foreach ($especialidadeAberta->grupos as $grupo)
                 <div class="mb-3">
-                    <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                        {{ $grupo->chave }}
-                        @if ($grupo->quantidade_minima)
-                            (mínimo {{ $grupo->quantidade_minima }} de {{ $grupo->itens->count() }})
-                        @endif
-                    </div>
+                    @if ($especialidadeAberta->estrutura !== 'itens_niveis')
+                        <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                            {{ $grupo->chave }}
+                            @if ($grupo->quantidade_minima)
+                                (mínimo {{ $grupo->quantidade_minima }} de {{ $grupo->itens->count() }})
+                            @endif
+                        </div>
+                    @endif
+                    @if ($grupo->mensagem_regras)
+                        <p class="mb-2 text-xs italic text-gray-500 dark:text-gray-400">{{ $grupo->mensagem_regras }}</p>
+                    @endif
                     <ul class="space-y-1">
                         @foreach ($grupo->itens as $item)
                             @php

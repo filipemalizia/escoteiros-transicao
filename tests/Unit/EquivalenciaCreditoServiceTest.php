@@ -5,10 +5,13 @@ use App\Models\BlocoNovo;
 use App\Models\CompetenciaAntiga;
 use App\Models\EixoNovo;
 use App\Models\Equivalencia;
+use App\Models\EquivalenciaEspecialidade;
+use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\Jovem;
 use App\Models\ProgressoAntigo;
+use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\Ramo;
 use App\Services\EquivalenciaCreditoService;
@@ -160,6 +163,27 @@ it('sem equivalencia cadastrada: so conta como concluido se marcado diretamente'
 
     expect($this->service->itemAntigoConcluido($this->jovem, $antigo))->toBeTrue()
         ->and($this->service->itemNovoConcluido($this->jovem, $novo))->toBeTrue();
+});
+
+it('especialidade conquistada credita o item novo vinculado via EquivalenciaEspecialidade', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade', 'estrutura' => 'atividades_temas']);
+    $grupo = $especialidade->grupos()->create(['chave' => 'fazer']);
+    $itemEspecialidade = $grupo->itens()->create(['texto' => 'Montar barraca']);
+
+    $itemSubstitutiva = criarItemNovo($this->bloco, 'N-060', 'Substitutiva');
+    EquivalenciaEspecialidade::create(['especialidade_distintivo_id' => $especialidade->id, 'item_novo_id' => $itemSubstitutiva->id]);
+
+    expect($this->service->itemNovoConcluido($this->jovem, $itemSubstitutiva))->toBeFalse();
+
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $itemEspecialidade->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+    $this->service->limparCache();
+
+    expect($this->service->itemNovoConcluido($this->jovem, $itemSubstitutiva))->toBeTrue();
 });
 
 it('protege contra ciclo de equivalencia mal cadastrada, sem travar nem estourar erro', function () {

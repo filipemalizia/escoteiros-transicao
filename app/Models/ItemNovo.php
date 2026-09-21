@@ -51,6 +51,11 @@ class ItemNovo extends Model
         return $this->hasMany(Equivalencia::class);
     }
 
+    public function equivalenciasEspecialidade(): HasMany
+    {
+        return $this->hasMany(EquivalenciaEspecialidade::class);
+    }
+
     /**
      * Se apagar este item, perderia progresso já registrado por algum jovem
      * ou equivalências já cadastradas.
@@ -58,6 +63,7 @@ class ItemNovo extends Model
     public function possuiDadosVinculados(): bool
     {
         return $this->progressos()->where('concluido', true)->exists()
-            || $this->equivalencias()->exists();
+            || $this->equivalencias()->exists()
+            || $this->equivalenciasEspecialidade()->exists();
     }
 }

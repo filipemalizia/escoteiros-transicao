@@ -68,6 +68,29 @@ it('calcula nivel_atingido pra estrutura itens_niveis conforme minimo_nivel_1/2'
         ->and($status['itens_concluidos'])->toBe(8);
 });
 
+it('insignia com estrutura itens_niveis nunca calcula nivel, usa a formula de todos os grupos satisfeitos', function () {
+    $insignia = EspecialidadeDistintivo::create([
+        'nome' => 'Insígnia do Aprender',
+        'tipo' => 'Insígnia',
+        'estrutura' => 'itens_niveis',
+    ]);
+    $grupo = $insignia->grupos()->create(['chave' => 'itens']);
+    $itens = collect(range(1, 2))->map(fn ($i) => $grupo->itens()->create(['texto' => "Item {$i}"]));
+
+    $status = $this->service->statusEspecialidade($this->jovem, $insignia->fresh('grupos.itens'));
+    expect($status['nivel_atingido'])->toBeNull()
+        ->and($status['status'])->toBe('Pendente');
+
+    marcarItemEspecialidadeConcluido($this->jovem, $itens[0]->id, $this->service);
+    $status = $this->service->statusEspecialidade($this->jovem, $insignia->fresh('grupos.itens'));
+    expect($status['status'])->toBe('Parcial');
+
+    marcarItemEspecialidadeConcluido($this->jovem, $itens[1]->id, $this->service);
+    $status = $this->service->statusEspecialidade($this->jovem, $insignia->fresh('grupos.itens'));
+    expect($status['nivel_atingido'])->toBeNull()
+        ->and($status['status'])->toBe('Concluído');
+});
+
 it('estrutura atividades_temas so conta como Concluído quando TODOS os grupos estao satisfeitos', function () {
     $especialidade = EspecialidadeDistintivo::create([
         'nome' => 'Educação Alimentar',

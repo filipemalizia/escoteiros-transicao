@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -52,6 +53,27 @@ class EspecialidadeDistintivo extends Model implements HasMedia
         return $this->hasMany(EspecialidadeDistintivoGrupo::class);
     }
 
+    public function itensNovos(): HasMany
+    {
+        return $this->hasMany(ItemNovo::class, 'especialidade_id');
+    }
+
+    public function equivalenciasEspecialidade(): HasMany
+    {
+        return $this->hasMany(EquivalenciaEspecialidade::class);
+    }
+
+    /**
+     * Se apagar, os itens novos vinculados a esta especialidade (e
+     * progresso/equivalências ligados a eles), além das equivalências de
+     * especialidade vinculadas, seriam apagados em cascata.
+     */
+    public function possuiItensComDadosVinculados(): bool
+    {
+        return $this->itensNovos->contains(fn (ItemNovo $item) => $item->possuiDadosVinculados())
+            || $this->equivalenciasEspecialidade()->exists();
+    }
+
     /**
      * Ramo(s) + eixo(s) a que esta especialidade/insígnia pertence. Como
      * EixoNovo já é por ramo, ligar direto nele resolve os dois de uma vez —
@@ -61,6 +83,32 @@ class EspecialidadeDistintivo extends Model implements HasMedia
     public function eixosNovos(): BelongsToMany
     {
         return $this->belongsToMany(EixoNovo::class, 'especialidade_distintivo_eixo_novo');
+    }
+
+    /**
+     * Ramo(s) a que esta especialidade/insígnia pertence diretamente, sem
+     * passar por nenhum Eixo/Bloco — caso de insígnias do Ramo como um todo
+     * (ex.: uma insígnia de Alcateia que não está ligada a nenhum Eixo
+     * específico). Independente de `eixosNovos()`: uma especialidade pode
+     * usar um, outro, ou os dois ao mesmo tempo.
+     */
+    public function ramos(): BelongsToMany
+    {
+        return $this->belongsToMany(Ramo::class, 'especialidade_distintivo_ramo');
+    }
+
+    /**
+     * Especialidades/Insígnias disponíveis pro Ramo informado — via Eixo
+     * (`eixosNovos`) OU vinculada direto ao Ramo (`ramos`), já que os dois
+     * caminhos coexistem (ver {@see ramos()}).
+     */
+    public function scopeParaRamo(Builder $query, int $ramoId): Builder
+    {
+        return $query->where(
+            fn (Builder $query) => $query
+                ->whereHas('eixosNovos', fn (Builder $query) => $query->where('ramo_id', $ramoId))
+                ->orWhereHas('ramos', fn (Builder $query) => $query->where('ramos.id', $ramoId))
+        );
     }
 
     /**

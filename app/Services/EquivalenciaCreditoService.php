@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Equivalencia;
+use App\Models\EquivalenciaEspecialidade;
+use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\Jovem;
@@ -44,15 +46,22 @@ class EquivalenciaCreditoService
     /** @var array<string, bool> */
     private array $cacheNovo = [];
 
+    public function __construct(
+        private readonly EspecialidadeStatusService $especialidadeStatusService = new EspecialidadeStatusService,
+    ) {}
+
     /**
-     * Esquece todo o cache memoizado — chamar sempre que `concluido` for
-     * alterado em `progresso_antigo`/`progresso_novo`, pra não arriscar
-     * servir um resultado desatualizado dentro da mesma requisição.
+     * Esquece todo o cache memoizado (o próprio e o do
+     * {@see EspecialidadeStatusService} injetado) — chamar sempre que
+     * `concluido` for alterado em
+     * `progresso_antigo`/`progresso_novo`/`progresso_especialidade`, pra não
+     * arriscar servir um resultado desatualizado dentro da mesma requisição.
      */
     public function limparCache(): void
     {
         $this->cacheAntigo = [];
         $this->cacheNovo = [];
+        $this->especialidadeStatusService->limparCache();
     }
 
     /**
@@ -148,6 +157,10 @@ class EquivalenciaCreditoService
             return true;
         }
 
+        if ($this->itemNovoConcluidoViaEspecialidade($jovem, $item)) {
+            return true;
+        }
+
         $equivalencias = Equivalencia::query()
             ->where('item_novo_id', $item->id)
             ->get();
@@ -169,5 +182,26 @@ class EquivalenciaCreditoService
         }
 
         return true;
+    }
+
+    /**
+     * Crédito de especialidade: um item novo (tipicamente uma ação
+     * Substitutiva de bloco) que uma Especialidade/Insígnia inteira já
+     * conquistada substitui — cadastrado via `EquivalenciaEspecialidade`.
+     * Unidirecional (a especialidade nunca é creditada de volta a partir do
+     * item), então não entra na proteção de ciclo/`$visitados`.
+     */
+    private function itemNovoConcluidoViaEspecialidade(Jovem $jovem, ItemNovo $item): bool
+    {
+        $especialidades = EquivalenciaEspecialidade::query()
+            ->where('item_novo_id', $item->id)
+            ->with('especialidadeDistintivo')
+            ->get()
+            ->pluck('especialidadeDistintivo')
+            ->filter();
+
+        return $especialidades->contains(
+            fn (EspecialidadeDistintivo $especialidade) => $this->especialidadeStatusService->statusEspecialidade($jovem, $especialidade)['status'] === 'Concluído'
+        );
     }
 }

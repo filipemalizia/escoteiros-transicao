@@ -10,7 +10,7 @@ class EspecialidadeDistintivoGrupo extends Model
 {
     protected $table = 'especialidade_distintivo_grupos';
 
-    protected $fillable = ['especialidade_distintivo_id', 'chave', 'quantidade_minima', 'ordem'];
+    protected $fillable = ['especialidade_distintivo_id', 'chave', 'quantidade_minima', 'mensagem_regras', 'ordem'];
 
     public function especialidadeDistintivo(): BelongsTo
     {

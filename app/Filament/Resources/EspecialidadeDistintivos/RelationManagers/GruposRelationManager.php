@@ -30,6 +30,10 @@ class GruposRelationManager extends RelationManager
                     ->label('Quantidade mínima')
                     ->numeric()
                     ->helperText('Deixe em branco se todos os itens do grupo forem obrigatórios pra conquista.'),
+                Textarea::make('mensagem_regras')
+                    ->label('Mensagem de regras (opcional)')
+                    ->helperText('Explicação de regras específicas deste grupo, quando necessário. Aparece pro jovem e pro chefe junto com os itens do grupo.')
+                    ->columnSpanFull(),
                 TextInput::make('ordem')
                     ->numeric(),
                 Repeater::make('itens')
