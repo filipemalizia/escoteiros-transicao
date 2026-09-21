@@ -7,9 +7,13 @@ use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Notifications\Notification;
+use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 class EspecialidadeDistintivosTable
@@ -17,8 +21,17 @@ class EspecialidadeDistintivosTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn ($query) => $query->with(['eixosNovos.ramo', 'ramos']))
+            ->defaultPaginationPageOption(25)
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['eixosNovos.ramo', 'ramos'])->withExists([
+                'media as tem_imagem_nivel_1' => fn (Builder $q) => $q->where('collection_name', 'imagem_nivel_1'),
+            ]))
             ->columns([
+                IconColumn::make('sem_imagem')
+                    ->label('')
+                    ->getStateUsing(fn (EspecialidadeDistintivo $record) => ! $record->tem_imagem_nivel_1)
+                    ->icon(fn (bool $state) => $state ? Heroicon::OutlinedExclamationTriangle : null)
+                    ->color('warning')
+                    ->tooltip(fn (bool $state) => $state ? 'Sem imagem cadastrada — não aparece colorida no portal/cartão de conquista' : null),
                 TextColumn::make('nome')
                     ->searchable(),
                 TextColumn::make('tipo')
@@ -55,6 +68,13 @@ class EspecialidadeDistintivosTable
                         'Especialidade' => 'Especialidade',
                         'Insígnia' => 'Insígnia',
                     ]),
+                Filter::make('sem_imagem')
+                    ->label('Sem imagem')
+                    ->toggle()
+                    ->query(fn (Builder $query) => $query->whereDoesntHave(
+                        'media',
+                        fn (Builder $q) => $q->where('collection_name', 'imagem_nivel_1'),
+                    )),
             ])
             ->recordActions([
                 EditAction::make(),

@@ -24,6 +24,7 @@
             >
                 {{ $item->tipo_acao }}
             </x-filament::badge>
+            <x-progresso.icone-modalidade :modalidade="$item->modalidade" />
             <span>{{ $item->descricao }}</span>
             @if ($item->especialidade)
                 <span class="text-gray-500 dark:text-gray-400">({{ $item->especialidade->tipo }}: {{ $item->especialidade->nome }})</span>

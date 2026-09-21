@@ -42,6 +42,10 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::TOPBAR_LOGO_AFTER,
                 fn (): string => view('filament.components.brand-nome', ['extraClass' => 'hidden sm:flex'])->render(),
             )
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): string => view('filament.hooks.vite-app-js')->render(),
+            )
             ->colors([
                 // Azul marinho da marca do grupo (extraído do logo oficial,
                 // #2E3192). Não usa Color::hex() puro porque o algoritmo de

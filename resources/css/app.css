@@ -27,3 +27,8 @@
     --color-primary-900: #12143E;
     --color-primary-950: #0C0D2A;
 }
+
+/* Evita o "flash" do modal de compartilhar conquista antes do Alpine inicializar. */
+[x-cloak] {
+    display: none !important;
+}

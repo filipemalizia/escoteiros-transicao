@@ -20,6 +20,7 @@
     <span class="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
         <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ $item->codigo }}</span>
         <x-progresso.badge :color="$corTipoAcao($item->tipo_acao)">{{ $item->tipo_acao }}</x-progresso.badge>
+        <x-progresso.icone-modalidade :modalidade="$item->modalidade" />
         <span>{{ $item->descricao }}</span>
         @if ($item->especialidade)
             <span class="text-gray-500 dark:text-gray-400">({{ $item->especialidade->tipo }}: {{ $item->especialidade->nome }})</span>

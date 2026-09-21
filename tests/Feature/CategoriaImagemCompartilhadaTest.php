@@ -39,6 +39,19 @@ it('a mesma logica de compartilhamento vale pra blocos', function () {
     expect($bloco->categoriaImagem->getFirstMediaUrl('imagem'))->not->toBeEmpty();
 });
 
+it('dataUriImagem devolve a mesma imagem como data uri base64, pro cartao de conquista', function () {
+    $categoria = CategoriaImagem::create(['tipo' => 'eixo', 'chave' => 'Meio Ambiente']);
+    $categoria->addMedia(pixelPngFile())->toMediaCollection('imagem');
+
+    expect($categoria->dataUriImagem())->toBe('data:image/png;base64,'.pixelPngBase64());
+});
+
+it('dataUriImagem retorna null quando a categoria nao tem imagem cadastrada', function () {
+    $categoria = CategoriaImagem::create(['tipo' => 'eixo', 'chave' => 'Sem Imagem']);
+
+    expect($categoria->dataUriImagem())->toBeNull();
+});
+
 it('nao mistura categorias de imagem de tipos diferentes com o mesmo nome', function () {
     CategoriaImagem::create(['tipo' => 'eixo', 'chave' => 'Meio Ambiente']);
     CategoriaImagem::create(['tipo' => 'bloco', 'chave' => 'Meio Ambiente']);

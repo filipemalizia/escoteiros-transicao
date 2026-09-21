@@ -20,6 +20,15 @@
                             <div class="text-xs text-gray-500 dark:text-gray-400">{{ $evento['subtitulo'] }}</div>
                             <div class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ $evento['data']->format('d/m/Y') }}</div>
                         </div>
+                        @if (in_array($evento['tipo'], ['especialidade', 'insignia', 'etapa', 'reconhecimento', 'bloco', 'eixo'], true))
+                            <x-progresso.botao-compartilhar
+                                :tipo="$evento['tipo']"
+                                :titulo="$evento['titulo']"
+                                :imagem-url="$evento['imagem_data_uri']"
+                                :nivel="$evento['nivel'] ?? null"
+                                :jovem="$this->jovem()"
+                            />
+                        @endif
                     </div>
                 </li>
             @endforeach

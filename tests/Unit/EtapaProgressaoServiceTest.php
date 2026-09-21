@@ -326,3 +326,22 @@ it('imagemReconhecimento retorna null pra ramo sem imagem mapeada', function () 
 
     expect($this->service->imagemReconhecimento($ramo))->toBeNull();
 });
+
+it('dataUriImagemEtapa devolve a mesma imagem como data uri base64, pro cartao de conquista', function () {
+    expect($this->service->dataUriImagemEtapa('Lobinho', 'Saltador'))->toStartWith('data:image/svg+xml;base64,');
+});
+
+it('dataUriImagemEtapa retorna null quando o arquivo ainda nao foi subido', function () {
+    comArquivoTemporariamenteAusente(
+        public_path('images/etapas/saltador.svg'),
+        function () {
+            expect($this->service->dataUriImagemEtapa('Lobinho', 'Saltador'))->toBeNull();
+        },
+    );
+});
+
+it('dataUriImagemReconhecimento devolve a mesma imagem como data uri base64, pro cartao de conquista', function () {
+    $ramo = Ramo::create(['nome' => 'Escoteiro']);
+
+    expect($this->service->dataUriImagemReconhecimento($ramo))->toStartWith('data:image/svg+xml;base64,');
+});

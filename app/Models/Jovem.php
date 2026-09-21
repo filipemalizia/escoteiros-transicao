@@ -65,6 +65,41 @@ class Jovem extends Model
         return Str::before($this->nome, ' ');
     }
 
+    /**
+     * Primeiros nomes comuns demais pra identificar sozinhos quem é quem
+     * num grupo (várias "Ana"/"Maria"/"João" diferentes) — quando o
+     * cadastro tem um nome do meio, ele entra junto no nome de exibição.
+     */
+    private const PRIMEIROS_NOMES_COMPOSTOS = [
+        'ana', 'maria', 'joão', 'joao', 'josé', 'jose', 'luiz', 'luís', 'luis', 'joana', 'marco', 'jean',
+    ];
+
+    /**
+     * Nome pra exibir em materiais de celebração (ex.: cartão de conquista
+     * compartilhável) — primeiro nome + sobrenome, exceto quando o primeiro
+     * nome sozinho for curto ou comum demais pra identificar a pessoa (ex.:
+     * "Ana", "Maria"), caso em que o nome do meio entra junto (ex.: "Ana
+     * Sophia Silva" em vez de só "Ana Silva").
+     */
+    public function nomeExibicao(): string
+    {
+        $partes = preg_split('/\s+/', trim($this->nome)) ?: [];
+
+        if (count($partes) <= 2) {
+            return $this->nome;
+        }
+
+        $primeiroNome = $partes[0];
+        $sobrenome = $partes[count($partes) - 1];
+
+        $usaNomeComposto = mb_strlen($primeiroNome) <= 4
+            || in_array(Str::lower($primeiroNome), self::PRIMEIROS_NOMES_COMPOSTOS, true);
+
+        $nome = $usaNomeComposto ? "{$primeiroNome} {$partes[1]}" : $primeiroNome;
+
+        return "{$nome} {$sobrenome}";
+    }
+
     public function progressoAntigo(): HasMany
     {
         return $this->hasMany(ProgressoAntigo::class);

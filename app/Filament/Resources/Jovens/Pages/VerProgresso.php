@@ -4,7 +4,9 @@ namespace App\Filament\Resources\Jovens\Pages;
 
 use App\Concerns\ExibeProgressoDoJovem;
 use App\Filament\Resources\Jovens\JovemResource;
+use App\Livewire\Portal\Catalogo;
 use App\Models\BlocoNovo;
+use App\Models\EspecialidadeDistintivo;
 use App\Models\EspecialidadeDistintivoItem;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
@@ -13,6 +15,7 @@ use App\Models\ProgressoAntigo;
 use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
+use App\Services\EtapaProgressaoService;
 use App\Services\StatusProgressaoService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
@@ -36,6 +39,10 @@ class VerProgresso extends Page
     protected string $view = 'filament.resources.jovens.pages.ver-progresso';
 
     public string $abaAtiva = 'novo';
+
+    public string $buscaEspecialidades = '';
+
+    public string $buscaInsignias = '';
 
     public ?int $blocoParaNovoItemPersonalizado = null;
 
@@ -68,6 +75,71 @@ class VerProgresso extends Page
     protected function jovem(): Jovem
     {
         return $this->getRecord();
+    }
+
+    /**
+     * @return Collection<int, EspecialidadeDistintivo>
+     */
+    public function getEspecialidadesFiltradas(): Collection
+    {
+        return $this->filtrarPorBusca(
+            $this->getEspecialidadesDisponiveis()->where('tipo', 'Especialidade'),
+            $this->buscaEspecialidades,
+        );
+    }
+
+    /**
+     * @return Collection<int, EspecialidadeDistintivo>
+     */
+    public function getInsigniasFiltradas(): Collection
+    {
+        return $this->filtrarPorBusca(
+            $this->getEspecialidadesDisponiveis()->where('tipo', 'Insígnia'),
+            $this->buscaInsignias,
+        );
+    }
+
+    /**
+     * Quantos itens de Especialidade/Insígnia (conforme `$tipo`) o jovem
+     * pediu avaliação e ainda não foram confirmados/rejeitados — usado pro
+     * badge da aba correspondente, sempre sobre o total real (ignora a
+     * busca, que só afeta o que é exibido na lista).
+     */
+    public function getAvaliacoesPendentesPorTipo(string $tipo): int
+    {
+        $itensIds = $this->getEspecialidadesDisponiveis()
+            ->where('tipo', $tipo)
+            ->flatMap(fn (EspecialidadeDistintivo $especialidade) => $especialidade->grupos->flatMap->itens)
+            ->pluck('id');
+
+        return ProgressoEspecialidade::query()
+            ->where('jovem_id', $this->getRecord()->id)
+            ->whereIn('especialidade_distintivo_item_id', $itensIds)
+            ->where('solicitado_pelo_jovem', true)
+            ->where('concluido', false)
+            ->count();
+    }
+
+    /**
+     * Filtro por nome usado nas seções de Especialidades/Insígnias da tela
+     * do chefe, cada uma com sua própria busca (a seção de Especialidades
+     * sozinha já acumula itens demais pra rolar procurando manualmente) —
+     * mesmo campo `nome` que o próprio jovem já pode buscar no catálogo do
+     * portal ({@see Catalogo::especialidadesFiltradas()}).
+     *
+     * @param  Collection<int, EspecialidadeDistintivo>  $especialidades
+     * @return Collection<int, EspecialidadeDistintivo>
+     */
+    private function filtrarPorBusca(Collection $especialidades, string $busca): Collection
+    {
+        return $especialidades
+            ->when(
+                filled($busca),
+                fn (Collection $especialidades) => $especialidades->filter(
+                    fn (EspecialidadeDistintivo $especialidade) => Str::contains($especialidade->nome, $busca, ignoreCase: true)
+                )
+            )
+            ->values();
     }
 
     /**
@@ -177,6 +249,9 @@ class VerProgresso extends Page
 
     public function toggleNovo(int $itemNovoId): void
     {
+        $bloco = ItemNovo::findOrFail($itemNovoId)->bloco;
+        [$trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes] = $this->capturarProgressoNovoAntes($bloco);
+
         $progresso = ProgressoNovo::query()->firstOrNew([
             'jovem_id' => $this->getRecord()->id,
             'item_novo_id' => $itemNovoId,
@@ -192,6 +267,8 @@ class VerProgresso extends Page
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
+
+        $this->celebrarProgressoNovo($bloco, $trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes);
     }
 
     public function confirmarAntigo(int $itemAntigoId): void
@@ -213,6 +290,9 @@ class VerProgresso extends Page
 
     public function confirmarNovo(int $itemNovoId): void
     {
+        $bloco = ItemNovo::findOrFail($itemNovoId)->bloco;
+        [$trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes] = $this->capturarProgressoNovoAntes($bloco);
+
         $progresso = ProgressoNovo::query()->firstOrNew([
             'jovem_id' => $this->getRecord()->id,
             'item_novo_id' => $itemNovoId,
@@ -226,6 +306,8 @@ class VerProgresso extends Page
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
+
+        $this->celebrarProgressoNovo($bloco, $trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes);
 
         $this->fecharAvaliacao();
     }
@@ -250,6 +332,9 @@ class VerProgresso extends Page
 
     public function toggleEspecialidade(int $especialidadeDistintivoItemId): void
     {
+        $especialidade = EspecialidadeDistintivoItem::findOrFail($especialidadeDistintivoItemId)->grupo->especialidadeDistintivo;
+        $statusAntes = $this->statusEspecialidade($especialidade);
+
         $progresso = ProgressoEspecialidade::query()->firstOrNew([
             'jovem_id' => $this->getRecord()->id,
             'especialidade_distintivo_item_id' => $especialidadeDistintivoItemId,
@@ -265,10 +350,15 @@ class VerProgresso extends Page
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
+
+        $this->celebrarSeEspecialidadeConcluiu($especialidade, $statusAntes);
     }
 
     public function confirmarEspecialidade(int $especialidadeDistintivoItemId): void
     {
+        $especialidade = EspecialidadeDistintivoItem::findOrFail($especialidadeDistintivoItemId)->grupo->especialidadeDistintivo;
+        $statusAntes = $this->statusEspecialidade($especialidade);
+
         $progresso = ProgressoEspecialidade::query()->firstOrNew([
             'jovem_id' => $this->getRecord()->id,
             'especialidade_distintivo_item_id' => $especialidadeDistintivoItemId,
@@ -283,7 +373,130 @@ class VerProgresso extends Page
 
         app(StatusProgressaoService::class)->limparCache();
 
+        $this->celebrarSeEspecialidadeConcluiu($especialidade, $statusAntes);
+
         $this->fecharAvaliacao();
+    }
+
+    /**
+     * Dispara o popup de celebração (mesmo cartão compartilhável do portal
+     * do jovem, {@see resources/views/components/progresso/modal-compartilhar.blade.php})
+     * quando a ação do chefe (toggle/confirmação) acabou de concluir a
+     * Especialidade/Insígnia ou de fazê-la subir de nível — nunca dispara
+     * ao desmarcar, nem quando ela já estava concluída/nesse nível antes.
+     */
+    private function celebrarSeEspecialidadeConcluiu(EspecialidadeDistintivo $especialidade, array $statusAntes): void
+    {
+        $statusDepois = $this->statusEspecialidade($especialidade);
+
+        $concluiuAgora = $statusAntes['status'] !== 'Concluído' && $statusDepois['status'] === 'Concluído';
+        $subiuDeNivel = ($statusDepois['nivel_atingido'] ?? 0) > ($statusAntes['nivel_atingido'] ?? 0);
+
+        if (! $concluiuAgora && ! $subiuDeNivel) {
+            return;
+        }
+
+        $this->dispararCartaoConquista(
+            tipo: $especialidade->tipo === 'Insígnia' ? 'insignia' : 'especialidade',
+            titulo: $especialidade->nome,
+            imagemUrl: $especialidade->dataUriImagemParaNivel($statusDepois['nivel_atingido'] ?? 1),
+            nivel: $statusDepois['nivel_atingido'],
+        );
+    }
+
+    /**
+     * Estado "antes" da trilha de Etapas e do Bloco/Eixo afetados por uma
+     * ação de item do Programa Novo (toggle/confirmação de item Novo ou
+     * Personalizado) — capturado sempre antes de gravar o progresso, pra
+     * {@see celebrarProgressoNovo()} conseguir comparar com o "depois".
+     *
+     * @return array{0: array<int, array{alcancado: bool}>, 1: bool, 2: bool}
+     */
+    private function capturarProgressoNovoAntes(BlocoNovo $bloco): array
+    {
+        return [
+            app(EtapaProgressaoService::class)->trilhaEtapaNovo($this->getRecord()),
+            $this->statusBloco($bloco)['status'] === 'Concluído',
+            $this->eixoConcluido($bloco->eixo),
+        ];
+    }
+
+    /**
+     * Dispara no máximo 1 popup de celebração por ação, na ordem de
+     * relevância Etapa/Reconhecimento > Eixo > Bloco — evita empilhar vários
+     * popups quando uma única ação (ex.: o último item de um Bloco) fecha
+     * o Bloco, o Eixo e uma Etapa ao mesmo tempo.
+     *
+     * @param  array<int, array{alcancado: bool}>  $trilhaAntes
+     */
+    private function celebrarProgressoNovo(BlocoNovo $bloco, array $trilhaAntes, bool $blocoJaConcluidoAntes, bool $eixoJaConcluidoAntes): void
+    {
+        if ($this->celebrarNovasEtapas($trilhaAntes)) {
+            return;
+        }
+
+        if ($blocoJaConcluidoAntes || $this->statusBloco($bloco)['status'] !== 'Concluído') {
+            return;
+        }
+
+        $eixo = $bloco->eixo;
+
+        if (! $eixoJaConcluidoAntes && $this->eixoConcluido($eixo)) {
+            $this->dispararCartaoConquista(
+                tipo: 'eixo',
+                titulo: $eixo->nome,
+                imagemUrl: $eixo->categoriaImagem?->dataUriImagem(),
+            );
+
+            return;
+        }
+
+        $this->dispararCartaoConquista(
+            tipo: 'bloco',
+            titulo: $bloco->titulo,
+            imagemUrl: $bloco->categoriaImagem?->dataUriImagem(),
+        );
+    }
+
+    /**
+     * Dispara o popup de celebração quando a trilha de Etapas do Programa
+     * Novo ({@see EtapaProgressaoService::trilhaEtapaNovo()}) acabou de
+     * alcançar um novo marco (Etapa ou o Reconhecimento máximo). Devolve se
+     * disparou, pra {@see celebrarProgressoNovo()} saber que não precisa
+     * checar Eixo/Bloco depois (evita empilhar popups na mesma ação).
+     *
+     * @param  array<int, array{alcancado: bool}>  $trilhaAntes
+     */
+    private function celebrarNovasEtapas(array $trilhaAntes): bool
+    {
+        $trilhaDepois = app(EtapaProgressaoService::class)->trilhaEtapaNovo($this->getRecord());
+
+        foreach ($trilhaDepois as $indice => $marco) {
+            if ($marco['alcancado'] && ! ($trilhaAntes[$indice]['alcancado'] ?? false)) {
+                $this->dispararCartaoConquista(
+                    tipo: $marco['tipo'],
+                    titulo: $marco['label'],
+                    imagemUrl: $marco['imagem_data_uri'],
+                );
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function dispararCartaoConquista(string $tipo, string $titulo, ?string $imagemUrl, ?int $nivel = null): void
+    {
+        $this->dispatch(
+            'abrir-cartao-conquista',
+            tipo: $tipo,
+            titulo: $titulo,
+            imagemUrl: $imagemUrl,
+            jovemNome: $this->getRecord()->nomeExibicao(),
+            ramoNome: $this->getRecord()->ramoAtual->nome,
+            nivel: $nivel,
+        );
     }
 
     public function rejeitarEspecialidade(int $especialidadeDistintivoItemId): void
@@ -436,6 +649,9 @@ class VerProgresso extends Page
 
         abort_unless(auth()->user()?->can('update', $item), 403);
 
+        $bloco = $item->bloco;
+        [$trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes] = $this->capturarProgressoNovoAntes($bloco);
+
         $progresso = ProgressoPersonalizado::query()->firstOrNew([
             'jovem_id' => $this->getRecord()->id,
             'item_personalizado_id' => $itemPersonalizadoId,
@@ -451,6 +667,8 @@ class VerProgresso extends Page
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
+
+        $this->celebrarProgressoNovo($bloco, $trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes);
     }
 
     public function confirmarItemPersonalizado(int $itemPersonalizadoId): void
@@ -458,6 +676,9 @@ class VerProgresso extends Page
         $item = ItemPersonalizado::findOrFail($itemPersonalizadoId);
 
         abort_unless(auth()->user()?->can('update', $item), 403);
+
+        $bloco = $item->bloco;
+        [$trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes] = $this->capturarProgressoNovoAntes($bloco);
 
         $progresso = ProgressoPersonalizado::query()->firstOrNew([
             'jovem_id' => $this->getRecord()->id,
@@ -472,6 +693,8 @@ class VerProgresso extends Page
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
+
+        $this->celebrarProgressoNovo($bloco, $trilhaAntes, $blocoJaConcluidoAntes, $eixoJaConcluidoAntes);
 
         $this->fecharAvaliacao();
     }

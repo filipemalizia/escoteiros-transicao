@@ -3,7 +3,10 @@
     $progressoNovoMap = $this->getProgressoNovoMap();
     $progressoPersonalizadoMap = $this->getProgressoPersonalizadoMap();
     $progressoEspecialidadeMap = $this->getProgressoEspecialidadeMap();
-    $especialidadesDisponiveis = $this->getEspecialidadesDisponiveis();
+    $especialidadesFiltradas = $this->getEspecialidadesFiltradas();
+    $insigniasFiltradas = $this->getInsigniasFiltradas();
+    $avaliacoesPendentesEspecialidadesTotal = $this->getAvaliacoesPendentesPorTipo('Especialidade');
+    $avaliacoesPendentesInsigniasTotal = $this->getAvaliacoesPendentesPorTipo('Insígnia');
     $itemParaAvaliar = $this->getItemParaAvaliar();
     $textoItemParaAvaliar = $avaliandoTipo === 'especialidade' ? $itemParaAvaliar?->texto : $itemParaAvaliar?->descricao;
     $registroParaAvaliar = match ($avaliandoTipo) {
@@ -25,7 +28,6 @@
 
     $avaliacoesPendentesNovoTotal = collect($progressoNovoMap)->filter($aguardandoAvaliacao)->count();
     $avaliacoesPendentesAntigoTotal = collect($progressoAntigoMap)->filter($aguardandoAvaliacao)->count();
-    $avaliacoesPendentesEspecialidadeTotal = collect($progressoEspecialidadeMap)->filter($aguardandoAvaliacao)->count();
 @endphp
 
 <x-filament-panels::page>
@@ -64,6 +66,24 @@
         </x-filament::tabs.item>
 
         <x-filament::tabs.item
+            :active="$abaAtiva === 'especialidades'"
+            :badge="$avaliacoesPendentesEspecialidadesTotal > 0 ? $avaliacoesPendentesEspecialidadesTotal : null"
+            badge-color="warning"
+            wire:click="$set('abaAtiva', 'especialidades')"
+        >
+            Especialidades
+        </x-filament::tabs.item>
+
+        <x-filament::tabs.item
+            :active="$abaAtiva === 'insignias'"
+            :badge="$avaliacoesPendentesInsigniasTotal > 0 ? $avaliacoesPendentesInsigniasTotal : null"
+            badge-color="warning"
+            wire:click="$set('abaAtiva', 'insignias')"
+        >
+            Insígnias
+        </x-filament::tabs.item>
+
+        <x-filament::tabs.item
             :active="$abaAtiva === 'antigo'"
             :badge="$avaliacoesPendentesAntigoTotal > 0 ? $avaliacoesPendentesAntigoTotal : null"
             badge-color="warning"
@@ -88,6 +108,17 @@
             @endphp
 
             <x-filament::section :heading="$elegivelNovo ? '🎉 Elegível ao ' . $nomeReconhecimentoNovo . '!' : 'Reconhecimento: ' . $nomeReconhecimentoNovo">
+                @if ($elegivelNovo)
+                    <x-slot name="afterHeader">
+                        <x-progresso.botao-compartilhar
+                            tipo="reconhecimento"
+                            :titulo="$nomeReconhecimentoNovo"
+                            :imagem-url="$this->getDataUriImagemReconhecimento()"
+                            :jovem="$this->getRecord()"
+                        />
+                    </x-slot>
+                @endif
+
                 @php $resumoNovo = $this->getResumoNovo(); @endphp
 
                 <ul class="space-y-1 text-sm font-medium text-gray-700 dark:text-gray-200">
@@ -113,6 +144,17 @@
 
             @forelse ($this->getEixosNovos() as $eixo)
                 <x-filament::section :heading="$eixo->nome">
+                    @if ($this->eixoConcluido($eixo))
+                        <x-slot name="afterHeader">
+                            <x-progresso.botao-compartilhar
+                                tipo="eixo"
+                                :titulo="$eixo->nome"
+                                :imagem-url="$eixo->categoriaImagem?->dataUriImagem()"
+                                :jovem="$this->getRecord()"
+                            />
+                        </x-slot>
+                    @endif
+
                     <div class="divide-y divide-gray-100 dark:divide-white/10">
                         @foreach ($eixo->blocos as $bloco)
                             @php
@@ -129,6 +171,17 @@
                                 :pendencia="$detalhesPendenciaNovo[$bloco->id]['detalhe'] ?? null"
                                 :avaliacoes-pendentes="$avaliacoesPendentesBloco"
                             >
+                                @if ($statusBloco['status'] === 'Concluído')
+                                    <x-slot:acoes>
+                                        <x-progresso.botao-compartilhar
+                                            tipo="bloco"
+                                            :titulo="$bloco->titulo"
+                                            :imagem-url="$bloco->categoriaImagem?->dataUriImagem()"
+                                            :jovem="$this->getRecord()"
+                                        />
+                                    </x-slot:acoes>
+                                @endif
+
                                 @php
                                     $itensPrincipaisBloco = $itensVisiveisBloco->whereIn('tipo_acao', ['Obrigatória', 'Variável']);
                                     $itensSubstitutivasBloco = $itensVisiveisBloco->where('tipo_acao', 'Substitutiva');
@@ -276,128 +329,56 @@
                     Nenhum Eixo cadastrado para o ramo deste jovem.
                 </p>
             @endforelse
+        </div>
+    @elseif ($abaAtiva === 'especialidades')
+        <div class="mt-6 space-y-6">
+            @if ($avaliacoesPendentesEspecialidadesTotal > 0)
+                <div class="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-400">
+                    🔔 {{ $avaliacoesPendentesEspecialidadesTotal }} {{ $avaliacoesPendentesEspecialidadesTotal === 1 ? 'item aguardando' : 'itens aguardando' }} sua avaliação nas especialidades abaixo.
+                </div>
+            @endif
 
             <x-filament::section heading="Especialidades">
-                @if ($avaliacoesPendentesEspecialidadeTotal > 0)
-                    <div class="mb-4 flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-400">
-                        🔔 {{ $avaliacoesPendentesEspecialidadeTotal }} {{ $avaliacoesPendentesEspecialidadeTotal === 1 ? 'item aguardando' : 'itens aguardando' }} sua avaliação nas especialidades abaixo.
-                    </div>
-                @endif
+                <x-filament::input.wrapper prefix-icon="heroicon-o-magnifying-glass" class="mb-4 max-w-sm">
+                    <x-filament::input
+                        type="search"
+                        wire:model.live.debounce.300ms="buscaEspecialidades"
+                        placeholder="Buscar Especialidade por nome..."
+                    />
+                </x-filament::input.wrapper>
 
-                <div class="divide-y divide-gray-100 dark:divide-white/10">
-                    @forelse ($especialidadesDisponiveis as $especialidade)
-                        @php
-                            $statusEspecialidade = $this->statusEspecialidade($especialidade);
-                            $itensDaEspecialidade = $especialidade->grupos->flatMap->itens;
-                            $avaliacoesPendentesEspecialidade = $itensDaEspecialidade->filter(fn ($item) => $aguardandoAvaliacao($progressoEspecialidadeMap[$item->id] ?? null))->count();
-                            $badgeStatus = $statusEspecialidade['nivel_atingido'] !== null
-                                ? ($statusEspecialidade['nivel_atingido'] > 0 ? "Nível {$statusEspecialidade['nivel_atingido']}" : 'Pendente')
-                                : $statusEspecialidade['status'];
-                        @endphp
-                        <x-progresso.accordion
-                            :id="'especialidade-'.$especialidade->id"
-                            :heading="$especialidade->nome"
-                            :description="$especialidade->descricao"
-                            :status="$badgeStatus"
-                            :status-color="$corStatus($statusEspecialidade['status'])"
-                            :avaliacoes-pendentes="$avaliacoesPendentesEspecialidade"
-                        >
-                            @foreach ($especialidade->grupos as $grupo)
-                                <div class="mb-3">
-                                    <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                                        {{ $grupo->chave }}
-                                        @if ($grupo->quantidade_minima)
-                                            (mínimo {{ $grupo->quantidade_minima }} de {{ $grupo->itens->count() }})
-                                        @endif
-                                    </div>
-                                    <ul class="space-y-2">
-                                        @foreach ($grupo->itens as $item)
-                                            @php
-                                                $registroEspecialidade = $progressoEspecialidadeMap[$item->id] ?? null;
-                                                $concluidoEspecialidade = (bool) ($registroEspecialidade?->concluido);
-                                                $solicitadoEspecialidade = (bool) ($registroEspecialidade?->solicitado_pelo_jovem);
-                                            @endphp
-                                            <li wire:key="item-especialidade-{{ $item->id }}-{{ $concluidoEspecialidade ? 1 : 0 }}" class="flex flex-wrap items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-white/5">
-                                                <label class="-mx-3 flex flex-1 cursor-pointer items-start gap-3 px-3">
-                                                    <input
-                                                        type="checkbox"
-                                                        wire:click="toggleEspecialidade({{ $item->id }})"
-                                                        @checked($concluidoEspecialidade)
-                                                        class="mt-0.5 h-6 w-6 shrink-0 rounded border-gray-300 accent-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-1 dark:border-gray-600 dark:focus:ring-offset-gray-900"
-                                                    />
-                                                    <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
-                                                        <span>{{ $item->texto }}</span>
-                                                        @if ($solicitadoEspecialidade && ! $concluidoEspecialidade)
-                                                            <x-filament::badge color="warning" size="sm">
-                                                                Aguardando avaliação
-                                                            </x-filament::badge>
-                                                            @if ($registroEspecialidade?->observacao_jovem)
-                                                                <span class="block w-full text-xs italic text-gray-500 dark:text-gray-400">
-                                                                    "{{ $registroEspecialidade->observacao_jovem }}"
-                                                                </span>
-                                                            @endif
-                                                        @endif
-                                                        @if ($concluidoEspecialidade && $registroEspecialidade?->data_conclusao)
-                                                            <span class="block w-full text-xs text-gray-400 dark:text-gray-500">
-                                                                Concluído em {{ $registroEspecialidade->data_conclusao->format('d/m/Y') }}
-                                                                @if ($registroEspecialidade->registradoPor)
-                                                                    por {{ $registroEspecialidade->registradoPor->name }}
-                                                                @endif
-                                                            </span>
-                                                        @endif
-                                                    </span>
-                                                </label>
-                                                @if ($solicitadoEspecialidade && ! $concluidoEspecialidade)
-                                                    <button type="button" wire:click="abrirAvaliacao('especialidade', {{ $item->id }})" class="shrink-0 rounded-lg bg-warning-600 px-2 py-1 text-xs font-medium text-white hover:bg-warning-500">
-                                                        Avaliação
-                                                    </button>
-                                                @endif
-                                            </li>
-                                        @endforeach
-                                    </ul>
-                                </div>
-                            @endforeach
-                        </x-progresso.accordion>
-                    @empty
-                        <p class="text-sm text-gray-500 dark:text-gray-400">
-                            Nenhuma Especialidade/Insígnia cadastrada para o ramo deste jovem.
-                        </p>
-                    @endforelse
-                </div>
+                @include('filament.resources.jovens.pages.partials.especialidades-lista', [
+                    'especialidades' => $especialidadesFiltradas,
+                    'mensagemVazio' => filled($buscaEspecialidades)
+                        ? 'Nenhuma Especialidade encontrada para essa busca.'
+                        : 'Nenhuma Especialidade cadastrada para o ramo deste jovem.',
+                ])
             </x-filament::section>
+        </div>
+    @elseif ($abaAtiva === 'insignias')
+        <div class="mt-6 space-y-6">
+            @if ($avaliacoesPendentesInsigniasTotal > 0)
+                <div class="flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-400">
+                    🔔 {{ $avaliacoesPendentesInsigniasTotal }} {{ $avaliacoesPendentesInsigniasTotal === 1 ? 'item aguardando' : 'itens aguardando' }} sua avaliação nas insígnias abaixo.
+                </div>
+            @endif
 
-            <x-progresso.modal
-                :show="(bool) $itemParaAvaliar"
-                heading="Avaliar solicitação"
-                wire-close-action="fecharAvaliacao"
-            >
-                @if ($itemParaAvaliar)
-                    <p class="mb-3 text-sm text-gray-700 dark:text-gray-200">{{ $textoItemParaAvaliar }}</p>
+            <x-filament::section heading="Insígnias">
+                <x-filament::input.wrapper prefix-icon="heroicon-o-magnifying-glass" class="mb-4 max-w-sm">
+                    <x-filament::input
+                        type="search"
+                        wire:model.live.debounce.300ms="buscaInsignias"
+                        placeholder="Buscar Insígnia por nome..."
+                    />
+                </x-filament::input.wrapper>
 
-                    @if ($registroParaAvaliar?->observacao_jovem)
-                        <div class="mb-3 rounded-lg bg-gray-50 p-3 text-sm italic text-gray-600 dark:bg-white/5 dark:text-gray-300">
-                            "{{ $registroParaAvaliar->observacao_jovem }}"
-                        </div>
-                    @endif
-
-                    <div class="flex justify-end gap-2">
-                        <button
-                            type="button"
-                            wire:click="rejeitarAvaliacaoAtual"
-                            class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5"
-                        >
-                            Recusar
-                        </button>
-                        <button
-                            type="button"
-                            wire:click="confirmarAvaliacaoAtual"
-                            class="rounded-lg bg-success-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-success-500"
-                        >
-                            Aprovar
-                        </button>
-                    </div>
-                @endif
-            </x-progresso.modal>
+                @include('filament.resources.jovens.pages.partials.especialidades-lista', [
+                    'especialidades' => $insigniasFiltradas,
+                    'mensagemVazio' => filled($buscaInsignias)
+                        ? 'Nenhuma Insígnia encontrada para essa busca.'
+                        : 'Nenhuma Insígnia cadastrada para o ramo deste jovem.',
+                ])
+            </x-filament::section>
         </div>
     @else
         <div class="mt-6 space-y-6">
@@ -517,6 +498,39 @@
         </div>
     @endif
 
+    <x-progresso.modal
+        :show="(bool) $itemParaAvaliar"
+        heading="Avaliar solicitação"
+        wire-close-action="fecharAvaliacao"
+    >
+        @if ($itemParaAvaliar)
+            <p class="mb-3 text-sm text-gray-700 dark:text-gray-200">{{ $textoItemParaAvaliar }}</p>
+
+            @if ($registroParaAvaliar?->observacao_jovem)
+                <div class="mb-3 rounded-lg bg-gray-50 p-3 text-sm italic text-gray-600 dark:bg-white/5 dark:text-gray-300">
+                    "{{ $registroParaAvaliar->observacao_jovem }}"
+                </div>
+            @endif
+
+            <div class="flex justify-end gap-2">
+                <button
+                    type="button"
+                    wire:click="rejeitarAvaliacaoAtual"
+                    class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5"
+                >
+                    Recusar
+                </button>
+                <button
+                    type="button"
+                    wire:click="confirmarAvaliacaoAtual"
+                    class="rounded-lg bg-success-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-success-500"
+                >
+                    Aprovar
+                </button>
+            </div>
+        @endif
+    </x-progresso.modal>
+
     @if ($blocoParaNovoItemPersonalizado)
         <div
             class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 p-4"
@@ -574,4 +588,6 @@
             </div>
         </div>
     @endif
+
+    <x-progresso.modal-compartilhar />
 </x-filament-panels::page>

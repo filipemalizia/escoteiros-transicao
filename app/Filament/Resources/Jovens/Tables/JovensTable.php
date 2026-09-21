@@ -32,6 +32,8 @@ class JovensTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->recordUrl(fn (Jovem $record) => JovemResource::getUrl('progresso', ['record' => $record]))
+            ->defaultPaginationPageOption(25)
             ->modifyQueryUsing(fn (Builder $query) => $query->withExists([
                 'progressoAntigo as tem_pendencia_antigo' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoNovo as tem_pendencia_novo' => fn (Builder $q) => self::comItemPendente($q),

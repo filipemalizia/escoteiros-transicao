@@ -83,6 +83,15 @@
                         <div class="text-xs text-gray-500 dark:text-gray-400">{{ $conquista['subtitulo'] }}</div>
                         <div class="text-xs text-gray-400 dark:text-gray-500">{{ $conquista['data'] }}</div>
                     </div>
+                    @if (in_array($conquista['tipo'], ['especialidade', 'insignia', 'etapa', 'reconhecimento'], true))
+                        <x-progresso.botao-compartilhar
+                            :tipo="$conquista['tipo']"
+                            :titulo="$conquista['titulo']"
+                            :imagem-url="$conquista['imagem_data_uri']"
+                            :nivel="$conquista['nivel'] ?? null"
+                            :jovem="$jovem"
+                        />
+                    @endif
                 </li>
             @endforeach
         </ul>
@@ -109,6 +118,14 @@
                             <div class="text-xs text-green-600 dark:text-green-400">Conquistado!</div>
                         @endif
                     </div>
+                    @if ($marco['alcancado'])
+                        <x-progresso.botao-compartilhar
+                            :tipo="$marco['tipo']"
+                            :titulo="$marco['label']"
+                            :imagem-url="$marco['imagem_data_uri']"
+                            :jovem="$jovem"
+                        />
+                    @endif
                 </li>
             @endforeach
         </ul>
@@ -148,6 +165,14 @@
                             </div>
                         @endif
                     </div>
+                    @if ($this->eixoConcluido($eixo))
+                        <x-progresso.botao-compartilhar
+                            tipo="eixo"
+                            :titulo="$eixo->nome"
+                            :imagem-url="$eixo->categoriaImagem?->dataUriImagem()"
+                            :jovem="$jovem"
+                        />
+                    @endif
                 </a>
 
                 @if ($blocosDoEixo->isNotEmpty())
@@ -170,6 +195,14 @@
                                         ></div>
                                     </div>
                                 </div>
+                                @if ($this->statusBloco($bloco)['status'] === 'Concluído')
+                                    <x-progresso.botao-compartilhar
+                                        tipo="bloco"
+                                        :titulo="$bloco->titulo"
+                                        :imagem-url="$bloco->categoriaImagem?->dataUriImagem()"
+                                        :jovem="$jovem"
+                                    />
+                                @endif
                             </div>
                         @endforeach
                     </div>
@@ -205,9 +238,17 @@
             @if ($imagemReconhecimento = $this->getImagemReconhecimento())
                 <x-progresso.imagem-badge :url="$imagemReconhecimento" :colorida="$elegivelNovo" :alt="$nomeReconhecimentoNovo" size="h-14 w-14" />
             @endif
-            <h2 class="font-semibold text-gray-950 dark:text-white">
+            <h2 class="min-w-0 flex-1 font-semibold text-gray-950 dark:text-white">
                 {{ $elegivelNovo ? '🎉 Elegível ao '.$nomeReconhecimentoNovo.'!' : 'Reconhecimento: '.$nomeReconhecimentoNovo }}
             </h2>
+            @if ($elegivelNovo)
+                <x-progresso.botao-compartilhar
+                    tipo="reconhecimento"
+                    :titulo="$nomeReconhecimentoNovo"
+                    :imagem-url="$this->getDataUriImagemReconhecimento()"
+                    :jovem="$jovem"
+                />
+            @endif
         </div>
 
         <ul class="mt-2 space-y-1 text-sm font-medium text-gray-700 dark:text-gray-200">

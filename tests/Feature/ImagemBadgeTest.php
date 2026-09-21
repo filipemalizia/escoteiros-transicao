@@ -41,6 +41,21 @@ it('retorna null quando nao ha nenhuma imagem', function () {
     expect($especialidade->urlImagemParaNivel(0))->toBeNull();
 });
 
+it('data uri da imagem segue a mesma escolha de nivel da url, mas embutida em base64', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade', 'estrutura' => 'itens_niveis']);
+    $especialidade->addMedia(pixelPngFile())->toMediaCollection('imagem_nivel_1');
+    $especialidade->addMedia(pixelPngFile())->toMediaCollection('imagem_nivel_2');
+
+    expect($especialidade->dataUriImagemParaNivel(1))->toStartWith('data:image/png;base64,')
+        ->and($especialidade->dataUriImagemParaNivel(2))->toStartWith('data:image/png;base64,');
+});
+
+it('data uri da imagem retorna null quando nao ha nenhuma imagem', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade', 'estrutura' => 'itens_niveis']);
+
+    expect($especialidade->dataUriImagemParaNivel(0))->toBeNull();
+});
+
 it('componente imagem-badge mostra a imagem colorida ou apagada conforme a prop', function () {
     $html = (string) $this->blade(
         '<x-progresso.imagem-badge url="https://exemplo.test/imagem.png" :colorida="$colorida" alt="Acampamento" />',

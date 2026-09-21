@@ -18,6 +18,8 @@
         {{ $slot }}
     </div>
 
+    <x-progresso.modal-compartilhar />
+
     @livewireScripts
 </body>
 </html>

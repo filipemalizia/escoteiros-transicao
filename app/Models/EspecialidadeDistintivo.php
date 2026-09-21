@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ImagemDataUriService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -124,5 +125,19 @@ class EspecialidadeDistintivo extends Model implements HasMedia
         }
 
         return $this->getFirstMediaUrl('imagem_nivel_1') ?: null;
+    }
+
+    /**
+     * Mesma escolha de nível de {@see urlImagemParaNivel()}, mas como data
+     * URI base64 em vez de URL — usado só pelo cartão de conquista
+     * compartilhável (ver {@see ImagemDataUriService}).
+     */
+    public function dataUriImagemParaNivel(?int $nivelAtingido): ?string
+    {
+        $media = ($nivelAtingido >= 2 && $this->hasMedia('imagem_nivel_2'))
+            ? $this->getFirstMedia('imagem_nivel_2')
+            : $this->getFirstMedia('imagem_nivel_1');
+
+        return app(ImagemDataUriService::class)->paraMedia($media);
     }
 }

@@ -114,6 +114,15 @@
                 <x-progresso.badge :color="$coloridaAberta ? 'success' : 'gray'">
                     {{ $rotuloAberta }}{{ $dataAberta ? ' ('.$dataAberta->format('d/m/Y').')' : '' }}
                 </x-progresso.badge>
+                @if ($coloridaAberta)
+                    <x-progresso.botao-compartilhar
+                        :tipo="$tipo === 'Insígnia' ? 'insignia' : 'especialidade'"
+                        :titulo="$especialidadeAberta->nome"
+                        :imagem-url="$especialidadeAberta->dataUriImagemParaNivel($nivelParaImagemAberta)"
+                        :nivel="$statusAberta['nivel_atingido']"
+                        :jovem="$this->jovem()"
+                    />
+                @endif
             </div>
 
             @if ($especialidadeAberta->descricao || $especialidadeAberta->regra_niveis)

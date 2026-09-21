@@ -19,6 +19,7 @@ use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
 use App\Services\EquivalenciaCreditoService;
 use App\Services\EtapaProgressaoService;
+use App\Services\ImagemDataUriService;
 use App\Services\StatusProgressaoService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
@@ -266,6 +267,16 @@ trait ExibeProgressoDoJovem
         return app(EtapaProgressaoService::class)->imagemReconhecimento($this->jovem()->ramoAtual);
     }
 
+    /**
+     * Mesma imagem de {@see getImagemReconhecimento()}, mas como data URI
+     * base64 em vez de URL — usado só pelo cartão de conquista
+     * compartilhável (ver {@see ImagemDataUriService}).
+     */
+    public function getDataUriImagemReconhecimento(): ?string
+    {
+        return app(EtapaProgressaoService::class)->dataUriImagemReconhecimento($this->jovem()->ramoAtual);
+    }
+
     public function getElegivelReconhecimentoAntigo(): bool
     {
         return app(EtapaProgressaoService::class)->elegivelReconhecimentoAntigo($this->jovem());
@@ -429,13 +440,15 @@ trait ExibeProgressoDoJovem
      * tabela própria, são todas derivadas via {@see StatusProgressaoService}
      * (Fase 7).
      *
-     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, tipo: string}>
+     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, imagem_data_uri: ?string, tipo: string}>
      */
     public function getEventosLinhaDoTempo(): array
     {
         $eventos = [
             ...$this->eventosBlocosConcluidos(),
+            ...$this->eventosEixosConcluidos(),
             ...$this->eventosEspecialidadesEInsignias(),
+            ...$this->eventosEtapasAlcancadas(),
         ];
 
         usort($eventos, fn (array $a, array $b) => $b['data'] <=> $a['data']);
@@ -444,7 +457,7 @@ trait ExibeProgressoDoJovem
     }
 
     /**
-     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, tipo: string}>
+     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, imagem_data_uri: ?string, tipo: string}>
      */
     private function eventosBlocosConcluidos(): array
     {
@@ -467,6 +480,7 @@ trait ExibeProgressoDoJovem
                     'titulo' => $bloco->titulo,
                     'subtitulo' => $eixo->nome,
                     'imagem_url' => $bloco->categoriaImagem?->getFirstMediaUrl('imagem') ?: null,
+                    'imagem_data_uri' => $bloco->categoriaImagem?->dataUriImagem(),
                     'tipo' => 'bloco',
                 ];
             }
@@ -476,7 +490,54 @@ trait ExibeProgressoDoJovem
     }
 
     /**
-     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, tipo: string}>
+     * Um Eixo conta como concluído quando tem pelo menos 1 Bloco e todos os
+     * seus Blocos estão com status "Concluído" — usado tanto pro evento na
+     * Linha do Tempo quanto pro botão de compartilhar aparecer no cartão do
+     * Eixo (portal e painel do chefe).
+     */
+    public function eixoConcluido(EixoNovo $eixo): bool
+    {
+        return $eixo->blocos->isNotEmpty()
+            && $eixo->blocos->every(fn (BlocoNovo $bloco) => $this->statusBloco($bloco)['status'] === 'Concluído');
+    }
+
+    /**
+     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, imagem_data_uri: ?string, tipo: string}>
+     */
+    private function eventosEixosConcluidos(): array
+    {
+        $eventos = [];
+
+        foreach ($this->getEixosNovos() as $eixo) {
+            if (! $this->eixoConcluido($eixo)) {
+                continue;
+            }
+
+            // Data do Eixo = data do último Bloco que fechou (o que efetivamente concluiu o Eixo).
+            $data = $eixo->blocos
+                ->map(fn (BlocoNovo $bloco) => $this->dataConclusaoBloco($bloco))
+                ->filter()
+                ->max();
+
+            if (! $data) {
+                continue;
+            }
+
+            $eventos[] = [
+                'data' => $data,
+                'titulo' => $eixo->nome,
+                'subtitulo' => 'Eixo concluído',
+                'imagem_url' => $eixo->categoriaImagem?->getFirstMediaUrl('imagem') ?: null,
+                'imagem_data_uri' => $eixo->categoriaImagem?->dataUriImagem(),
+                'tipo' => 'eixo',
+            ];
+        }
+
+        return $eventos;
+    }
+
+    /**
+     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, imagem_data_uri: ?string, nivel: ?int, tipo: string}>
      */
     private function eventosEspecialidadesEInsignias(): array
     {
@@ -503,6 +564,8 @@ trait ExibeProgressoDoJovem
                         'titulo' => $especialidade->nome,
                         'subtitulo' => "Nível {$nivel}",
                         'imagem_url' => $especialidade->urlImagemParaNivel($nivel),
+                        'imagem_data_uri' => $especialidade->dataUriImagemParaNivel($nivel),
+                        'nivel' => $nivel,
                         'tipo' => $tipoEvento,
                     ];
                 }
@@ -525,7 +588,39 @@ trait ExibeProgressoDoJovem
                 'titulo' => $especialidade->nome,
                 'subtitulo' => 'Concluída',
                 'imagem_url' => $especialidade->urlImagemParaNivel(1),
+                'imagem_data_uri' => $especialidade->dataUriImagemParaNivel(1),
+                'nivel' => null,
                 'tipo' => $tipoEvento,
+            ];
+        }
+
+        return $eventos;
+    }
+
+    /**
+     * Distintivos de Etapa (e o Reconhecimento máximo) já alcançados na
+     * trilha do Programa Novo ({@see EtapaProgressaoService::trilhaEtapaNovo()})
+     * — mesma trilha já usada pro card "Etapas" do portal, só filtrando pros
+     * marcos que o jovem já bateu e têm data conhecida.
+     *
+     * @return array<int, array{data: Carbon, titulo: string, subtitulo: string, imagem_url: ?string, imagem_data_uri: ?string, tipo: string}>
+     */
+    private function eventosEtapasAlcancadas(): array
+    {
+        $eventos = [];
+
+        foreach (app(EtapaProgressaoService::class)->trilhaEtapaNovo($this->jovem()) as $marco) {
+            if (! $marco['alcancado'] || ! $marco['data_alcancado']) {
+                continue;
+            }
+
+            $eventos[] = [
+                'data' => $marco['data_alcancado'],
+                'titulo' => $marco['label'],
+                'subtitulo' => $marco['tipo'] === 'reconhecimento' ? 'Reconhecimento' : 'Distintivo de Etapa',
+                'imagem_url' => $marco['imagem_url'],
+                'imagem_data_uri' => $marco['imagem_data_uri'],
+                'tipo' => $marco['tipo'],
             ];
         }
 

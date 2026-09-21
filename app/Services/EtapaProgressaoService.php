@@ -7,6 +7,7 @@ use App\Models\ItemAntigo;
 use App\Models\Jovem;
 use App\Models\Ramo;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 class EtapaProgressaoService
 {
@@ -461,7 +462,7 @@ class EtapaProgressaoService
      * (o N-ésimo bloco concluído, em ordem cronológica — ver
      * `dataCorteEtapaNovo()`), null se ainda não alcançou.
      *
-     * @return array<int, array{tipo: string, label: string, imagem_url: ?string, alcancado: bool, atual: bool, faltam: int, progresso: float, data_alcancado: ?Carbon}>
+     * @return array<int, array{tipo: string, label: string, imagem_url: ?string, imagem_data_uri: ?string, alcancado: bool, atual: bool, faltam: int, progresso: float, data_alcancado: ?Carbon}>
      */
     public function trilhaEtapaNovo(Jovem $jovem): array
     {
@@ -483,6 +484,9 @@ class EtapaProgressaoService
                 'tipo' => 'etapa',
                 'label' => $label,
                 'imagem_url' => $this->imagemEtapa($ramoNome, $label),
+                // Só computa a data URI (leitura de arquivo + base64) pros marcos já
+                // alcançados - é a única situação em que o botão de compartilhar aparece.
+                'imagem_data_uri' => $alcancado ? $this->dataUriImagemEtapa($ramoNome, $label) : null,
                 'alcancado' => $alcancado,
                 'faltam' => max(0, $maximo - $concluidos),
                 'progresso' => min(1.0, $concluidos / $maximo),
@@ -498,6 +502,7 @@ class EtapaProgressaoService
             'tipo' => 'reconhecimento',
             'label' => $this->nomeReconhecimento($jovem->ramoAtual, 'novo'),
             'imagem_url' => $this->imagemReconhecimento($jovem->ramoAtual),
+            'imagem_data_uri' => $elegivelReconhecimento ? $this->dataUriImagemReconhecimento($jovem->ramoAtual) : null,
             'alcancado' => $elegivelReconhecimento,
             'faltam' => max(0, 18 - $concluidos),
             'progresso' => ($progressoBlocos + $progressoRequisitos) / 2,
@@ -588,17 +593,54 @@ class EtapaProgressaoService
     }
 
     /**
+     * Mesma imagem de {@see imagemEtapa()}, mas como data URI base64 em vez
+     * de URL — usado só pelo cartão de conquista compartilhável (ver
+     * {@see ImagemDataUriService}).
+     */
+    public function dataUriImagemEtapa(string $ramoNome, string $nomeEtapa): ?string
+    {
+        $nomeBase = preg_replace('/\s+conclu[ií]d[ao]$/u', '', $nomeEtapa);
+        $slug = self::IMAGENS_ETAPA_NOVO[$ramoNome][$nomeBase] ?? null;
+
+        return $slug ? app(ImagemDataUriService::class)->paraCaminho($this->caminhoImagemEstatica('images/etapas', $slug)) : null;
+    }
+
+    /**
+     * Mesma imagem de {@see imagemReconhecimento()}, mas como data URI
+     * base64 em vez de URL — usado só pelo cartão de conquista
+     * compartilhável (ver {@see ImagemDataUriService}).
+     */
+    public function dataUriImagemReconhecimento(Ramo $ramo): ?string
+    {
+        $slug = self::IMAGENS_RECONHECIMENTO[$ramo->nome] ?? null;
+
+        return $slug ? app(ImagemDataUriService::class)->paraCaminho($this->caminhoImagemEstatica('images/reconhecimentos', $slug)) : null;
+    }
+
+    /**
      * Procura `{$pasta}/{$slug}.{ext}` em `public/`, testando cada extensão
      * de `EXTENSOES_IMAGEM_ESTATICA` na ordem, e devolve a URL pública da
      * primeira que existir — ou `null` se nenhuma existir ainda.
      */
     private function resolverImagemEstatica(string $pasta, string $slug): ?string
     {
-        foreach (self::EXTENSOES_IMAGEM_ESTATICA as $extensao) {
-            $caminhoRelativo = "{$pasta}/{$slug}.{$extensao}";
+        $caminho = $this->caminhoImagemEstatica($pasta, $slug);
 
-            if (file_exists(public_path($caminhoRelativo))) {
-                return asset($caminhoRelativo);
+        return $caminho ? asset(Str::after($caminho, public_path().'/')) : null;
+    }
+
+    /**
+     * Caminho absoluto de `{$pasta}/{$slug}.{ext}` dentro de `public/`,
+     * testando cada extensão de `EXTENSOES_IMAGEM_ESTATICA` na ordem — ou
+     * `null` se nenhuma existir ainda.
+     */
+    private function caminhoImagemEstatica(string $pasta, string $slug): ?string
+    {
+        foreach (self::EXTENSOES_IMAGEM_ESTATICA as $extensao) {
+            $caminhoAbsoluto = public_path("{$pasta}/{$slug}.{$extensao}");
+
+            if (file_exists($caminhoAbsoluto)) {
+                return $caminhoAbsoluto;
             }
         }
 

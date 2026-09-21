@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ImagemDataUriService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\MediaLibrary\HasMedia;
@@ -29,5 +30,14 @@ class CategoriaImagem extends Model implements HasMedia
     public function blocosNovos(): HasMany
     {
         return $this->hasMany(BlocoNovo::class, 'categoria_imagem_id');
+    }
+
+    /**
+     * Imagem como data URI base64 em vez de URL — usado só pelo cartão de
+     * conquista compartilhável (ver {@see ImagemDataUriService}).
+     */
+    public function dataUriImagem(): ?string
+    {
+        return app(ImagemDataUriService::class)->paraMedia($this->getFirstMedia('imagem'));
     }
 }
