@@ -38,6 +38,10 @@ class EquivalenciaEspecialidadeForm
                     ))
                     ->searchable()
                     ->required(),
+                Select::make('nivel_minimo')
+                    ->label('Nível mínimo exigido')
+                    ->options([1 => 'Nível 1', 2 => 'Nível 2'])
+                    ->helperText("Deixe em branco pra aceitar qualquer nível (comportamento padrão). Só se aplica a especialidades com estrutura de níveis ('itens_niveis')."),
                 Textarea::make('observacao')
                     ->columnSpanFull(),
             ]);

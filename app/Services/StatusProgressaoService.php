@@ -725,4 +725,11 @@ class StatusProgressaoService
             + ProgressoPersonalizado::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
             + ProgressoEspecialidade::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count();
     }
+
+    public function contagemMarcadosParaFazer(Jovem $jovem): int
+    {
+        return ProgressoNovo::query()->where('jovem_id', $jovem->id)->where('marcado_para_fazer', true)->where('concluido', false)->count()
+            + ProgressoPersonalizado::query()->where('jovem_id', $jovem->id)->where('marcado_para_fazer', true)->where('concluido', false)->count()
+            + ProgressoEspecialidade::query()->where('jovem_id', $jovem->id)->where('marcado_para_fazer', true)->where('concluido', false)->count();
+    }
 }

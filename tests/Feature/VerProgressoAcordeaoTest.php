@@ -8,6 +8,7 @@ use App\Models\EixoNovo;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\Jovem;
+use App\Models\ProgressoNovo;
 use App\Models\Ramo;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -31,7 +32,7 @@ beforeEach(function () {
 
     $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Eixo Corporal']);
     $this->bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco 1', 'descricao' => 'Intencionalidade do bloco', 'quantidade_minima_variaveis' => 1]);
-    ItemNovo::create(['bloco_id' => $this->bloco->id, 'codigo' => 'B1-001', 'descricao' => 'Ação obrigatória', 'tipo_acao' => 'Obrigatória']);
+    $this->itemNovo = ItemNovo::create(['bloco_id' => $this->bloco->id, 'codigo' => 'B1-001', 'descricao' => 'Ação obrigatória', 'tipo_acao' => 'Obrigatória']);
 });
 
 it('abre por padrao na aba do programa novo', function () {
@@ -54,4 +55,19 @@ it('renderiza a competencia antiga dentro de um acordeao fechado, identificavel 
     Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
         ->set('abaAtiva', 'antigo')
         ->assertSee('id="competencia-'.$this->competencia->id.'"', false);
+});
+
+it('mostra o indicador de quero fazer no cabecalho do bloco quando algum item dele foi marcado', function () {
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->assertDontSee("Jovem marcou como 'quero fazer'", false);
+
+    ProgressoNovo::create([
+        'jovem_id' => $this->jovem->id,
+        'item_novo_id' => $this->itemNovo->id,
+        'marcado_para_fazer' => true,
+        'marcado_para_fazer_em' => now(),
+    ]);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->assertSee("Jovem marcou como 'quero fazer'", false);
 });

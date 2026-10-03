@@ -13,8 +13,18 @@
 @endphp
 
 <div>
+    <div class="mb-4">
+        <input
+            type="search"
+            wire:model.live.debounce.300ms="busca"
+            placeholder="Buscar item por código ou descrição..."
+            class="w-full rounded-lg border-gray-300 text-sm placeholder:text-gray-400 focus:border-gray-500 focus:ring-gray-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+        />
+    </div>
+
     <div class="divide-y divide-gray-100 dark:divide-white/10">
         @foreach ($eixo->blocos as $bloco)
+            @continue(! $this->blocoTemCorrespondenciaNaBusca($bloco))
             @php $statusBloco = $this->statusBloco($bloco); @endphp
             <x-progresso.accordion
                 :id="'bloco-'.$bloco->id"
@@ -26,9 +36,10 @@
                 com-imagem
                 :imagem-url="$bloco->categoriaImagem?->getFirstMediaUrl('imagem')"
                 :imagem-colorida="$statusBloco['status'] === 'Concluído'"
+                :aberto-por-padrao="$bloco->id === $blocoAbertoPorPadrao"
             >
                 @php
-                    $itensVisiveis = $this->itensVisiveisDoBloco($bloco);
+                    $itensVisiveis = $this->itensVisiveisNaBusca($this->itensVisiveisDoBloco($bloco));
                     $itensPrincipais = $itensVisiveis->whereIn('tipo_acao', ['Obrigatória', 'Variável']);
                     $itensSubstitutivas = $itensVisiveis->where('tipo_acao', 'Substitutiva');
                 @endphp
@@ -40,6 +51,7 @@
                             :registro="$progressoNovoMap[$item->id] ?? null"
                             :concluido-geral="$this->itemNovoConcluido($item)"
                             :solicitado="(bool) (($progressoNovoMap[$item->id] ?? null)?->solicitado_pelo_jovem)"
+                            :busca="$busca"
                         />
                     @endforeach
                 </ul>
@@ -72,7 +84,7 @@
                     </div>
                 @endif
 
-                @php $itensPersonalizados = $this->getItensPersonalizadosDoBloco($bloco); @endphp
+                @php $itensPersonalizados = $this->getItensPersonalizadosDoBlocoFiltrados($bloco); @endphp
                 @if ($itensPersonalizados->isNotEmpty())
                     <div class="mt-3 rounded-lg bg-gray-50 p-3 dark:bg-white/5">
                         <div class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -84,6 +96,7 @@
                                     $registroPersonalizado = $progressoPersonalizadoMap[$itemPersonalizado->id] ?? null;
                                     $concluidoPersonalizado = (bool) ($registroPersonalizado?->concluido);
                                     $solicitadoPersonalizado = (bool) ($registroPersonalizado?->solicitado_pelo_jovem);
+                                    $queroFazerPersonalizado = (bool) ($registroPersonalizado?->marcado_para_fazer);
                                     $podeEnviarPersonalizado = ! $concluidoPersonalizado && ! $solicitadoPersonalizado;
                                 @endphp
                                 <li
@@ -93,7 +106,7 @@
                                     <x-progresso.status-icone :concluido="$concluidoPersonalizado" :solicitado="$solicitadoPersonalizado" class="mt-0.5" />
                                     <span class="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
                                         <x-progresso.badge color="warning">Personalizado</x-progresso.badge>
-                                        <span>{{ $itemPersonalizado->descricao }}</span>
+                                        <span><x-progresso.destaque :texto="$itemPersonalizado->descricao" :busca="$busca" /></span>
                                         @if ($concluidoPersonalizado && $registroPersonalizado?->data_conclusao)
                                             <span class="block w-full text-xs text-gray-400 dark:text-gray-500">
                                                 Concluído em {{ $registroPersonalizado->data_conclusao->format('d/m/Y') }}
@@ -105,6 +118,12 @@
                                             </span>
                                         @endif
                                     </span>
+                                    @if (! $concluidoPersonalizado)
+                                        <x-progresso.botao-quero-fazer
+                                            :marcado="$queroFazerPersonalizado"
+                                            wire-click="toggleQueroFazerPersonalizado({{ $itemPersonalizado->id }})"
+                                        />
+                                    @endif
                                 </li>
                             @endforeach
                         </ul>
@@ -119,6 +138,7 @@
                                 :registro="$progressoNovoMap[$item->id] ?? null"
                                 :concluido-geral="$this->itemNovoConcluido($item)"
                                 :solicitado="(bool) (($progressoNovoMap[$item->id] ?? null)?->solicitado_pelo_jovem)"
+                                :busca="$busca"
                             />
                         @endforeach
                     </ul>

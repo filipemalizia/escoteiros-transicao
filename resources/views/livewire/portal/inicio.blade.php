@@ -16,13 +16,22 @@
             <h1 class="text-xl font-bold text-gray-950 dark:text-white">Olá, {{ $jovem->primeiroNome() }}</h1>
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ $jovem->ramoAtual->nome }}</p>
         </div>
-        <button
-            type="button"
-            wire:click="sair"
-            class="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5"
-        >
-            Sair
-        </button>
+        <div class="flex shrink-0 items-center gap-2">
+            <a
+                href="{{ route('portal.busca') }}"
+                class="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-white/5"
+                title="Buscar"
+            >
+                <x-filament::icon icon="heroicon-o-magnifying-glass" class="h-5 w-5" />
+            </a>
+            <button
+                type="button"
+                wire:click="sair"
+                class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5"
+            >
+                Sair
+            </button>
+        </div>
     </div>
 
     <div class="mt-6 rounded-xl border border-gray-200 p-4 dark:border-white/10">

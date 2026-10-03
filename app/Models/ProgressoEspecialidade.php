@@ -18,6 +18,9 @@ class ProgressoEspecialidade extends Model
         'solicitado_pelo_jovem',
         'solicitado_em',
         'observacao_jovem',
+        'marcado_para_fazer',
+        'marcado_para_fazer_em',
+        'data_alvo',
     ];
 
     protected $casts = [
@@ -25,6 +28,9 @@ class ProgressoEspecialidade extends Model
         'data_conclusao' => 'date',
         'solicitado_pelo_jovem' => 'boolean',
         'solicitado_em' => 'datetime',
+        'marcado_para_fazer' => 'boolean',
+        'marcado_para_fazer_em' => 'datetime',
+        'data_alvo' => 'date',
     ];
 
     public function jovem(): BelongsTo

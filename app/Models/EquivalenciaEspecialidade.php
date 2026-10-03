@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class EquivalenciaEspecialidade extends Model
 {
-    protected $fillable = ['especialidade_distintivo_id', 'item_novo_id', 'observacao'];
+    protected $fillable = ['especialidade_distintivo_id', 'item_novo_id', 'nivel_minimo', 'observacao'];
 
     public function especialidadeDistintivo(): BelongsTo
     {

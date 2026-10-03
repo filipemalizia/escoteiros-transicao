@@ -6,6 +6,7 @@ use App\Concerns\ExibeProgressoDoJovem;
 use App\Filament\Resources\Jovens\JovemResource;
 use App\Livewire\Portal\Catalogo;
 use App\Models\BlocoNovo;
+use App\Models\EquivalenciaEspecialidade;
 use App\Models\EspecialidadeDistintivo;
 use App\Models\EspecialidadeDistintivoItem;
 use App\Models\ItemNovo;
@@ -17,6 +18,7 @@ use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
 use App\Services\EtapaProgressaoService;
 use App\Services\StatusProgressaoService;
+use App\Support\Busca;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -44,6 +46,10 @@ class VerProgresso extends Page
 
     public string $buscaInsignias = '';
 
+    public bool $buscaGeralAberta = false;
+
+    public string $buscaGeralTermo = '';
+
     public ?int $blocoParaNovoItemPersonalizado = null;
 
     public string $novoItemPersonalizadoDescricao = '';
@@ -59,6 +65,17 @@ class VerProgresso extends Page
     public ?string $avaliandoTipo = null;
 
     public ?int $avaliandoItemId = null;
+
+    /**
+     * Tipo ('antigo'|'novo'|'personalizado'|'especialidade') e item cujo
+     * modal de edição de data de conclusão está aberto no momento (null =
+     * nenhum) — só faz sentido editar a data de algo já concluído.
+     */
+    public ?string $editandoDataTipo = null;
+
+    public ?int $editandoDataItemId = null;
+
+    public string $editandoDataValor = '';
 
     public function mount(int|string $record): void
     {
@@ -121,6 +138,66 @@ class VerProgresso extends Page
     }
 
     /**
+     * Busca única sobre Especialidades/Insígnias (os dois tipos) + itens do
+     * Programa Novo, sem precisar trocar de aba — diferente da busca de
+     * cada aba ({@see filtrarPorBusca()}), que só olha o tipo daquela aba e
+     * não cobre o Programa Novo.
+     */
+    public function abrirBuscaGeral(): void
+    {
+        $this->buscaGeralAberta = true;
+    }
+
+    public function fecharBuscaGeral(): void
+    {
+        $this->buscaGeralAberta = false;
+        $this->buscaGeralTermo = '';
+    }
+
+    /**
+     * Ao clicar num resultado de Especialidade/Insígnia na busca geral: vai
+     * pra aba certa e já pré-preenche a busca daquela aba com o mesmo termo
+     * (a busca da aba, ao contrário da geral, também filtra os requisitos
+     * dentro do acordeão — ver {@see especialidadesDaBuscaGeral()}).
+     */
+    public function abrirResultadoEspecialidadeDaBuscaGeral(string $tipo, string $busca): void
+    {
+        if ($tipo === 'Insígnia') {
+            $this->abaAtiva = 'insignias';
+            $this->buscaInsignias = $busca;
+        } else {
+            $this->abaAtiva = 'especialidades';
+            $this->buscaEspecialidades = $busca;
+        }
+
+        $this->fecharBuscaGeral();
+    }
+
+    /**
+     * Vai pra aba do Programa Novo e já abre o acordeão do Bloco certo —
+     * como a página inteira já está renderizada (diferente do portal, que
+     * navega pra outra URL), o acordeão precisa ser aberto via evento de
+     * browser depois que a troca de aba renderizar o bloco de novo (ver
+     * {@see resources/views/components/progresso/accordion.blade.php}).
+     */
+    public function abrirBlocoDaBuscaGeral(int $blocoId): void
+    {
+        $this->abaAtiva = 'novo';
+        $this->fecharBuscaGeral();
+        $this->dispatch('abrir-acordeao', id: 'bloco-'.$blocoId);
+    }
+
+    /**
+     * Ação rápida direto no resultado da busca geral — evita o adulto ter
+     * que abrir o bloco só pra marcar o item como feito.
+     */
+    public function marcarConcluidoDaBuscaGeral(int $itemNovoId): void
+    {
+        $this->confirmarNovo($itemNovoId);
+        $this->fecharBuscaGeral();
+    }
+
+    /**
      * Filtro por nome usado nas seções de Especialidades/Insígnias da tela
      * do chefe, cada uma com sua própria busca (a seção de Especialidades
      * sozinha já acumula itens demais pra rolar procurando manualmente) —
@@ -136,7 +213,17 @@ class VerProgresso extends Page
             ->when(
                 filled($busca),
                 fn (Collection $especialidades) => $especialidades->filter(
-                    fn (EspecialidadeDistintivo $especialidade) => Str::contains($especialidade->nome, $busca, ignoreCase: true)
+                    fn (EspecialidadeDistintivo $especialidade) => Busca::contemTodasAsPalavras([
+                        $especialidade->nome,
+                        ...$especialidade->grupos->flatMap->itens->pluck('texto')->all(),
+                        ...$especialidade->equivalenciasEspecialidade
+                            ->filter(fn (EquivalenciaEspecialidade $equivalencia) => $equivalencia->itemNovo !== null)
+                            ->flatMap(fn (EquivalenciaEspecialidade $equivalencia) => [
+                                $equivalencia->itemNovo->codigo,
+                                $equivalencia->itemNovo->descricao,
+                            ])
+                            ->all(),
+                    ], $busca)
                 )
             )
             ->values();
@@ -148,6 +235,11 @@ class VerProgresso extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('buscarTudo')
+                ->label('Buscar em tudo')
+                ->icon('heroicon-o-magnifying-glass')
+                ->color('gray')
+                ->action(fn () => $this->abrirBuscaGeral()),
             ActionGroup::make([
                 Action::make('baixarPendenciasPdfTodos')
                     ->label('Baixar Todos')
@@ -264,6 +356,11 @@ class VerProgresso extends Page
         $progresso->registrado_por_id = auth()->id();
         $progresso->solicitado_pelo_jovem = false;
         $progresso->solicitado_em = null;
+
+        if ($concluido) {
+            $progresso->marcado_para_fazer = false;
+            $progresso->marcado_para_fazer_em = null;
+        }
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
@@ -303,6 +400,8 @@ class VerProgresso extends Page
         $progresso->registrado_por_id = auth()->id();
         $progresso->solicitado_pelo_jovem = false;
         $progresso->solicitado_em = null;
+        $progresso->marcado_para_fazer = false;
+        $progresso->marcado_para_fazer_em = null;
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
@@ -347,6 +446,11 @@ class VerProgresso extends Page
         $progresso->registrado_por_id = auth()->id();
         $progresso->solicitado_pelo_jovem = false;
         $progresso->solicitado_em = null;
+
+        if ($concluido) {
+            $progresso->marcado_para_fazer = false;
+            $progresso->marcado_para_fazer_em = null;
+        }
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
@@ -369,6 +473,8 @@ class VerProgresso extends Page
         $progresso->registrado_por_id = auth()->id();
         $progresso->solicitado_pelo_jovem = false;
         $progresso->solicitado_em = null;
+        $progresso->marcado_para_fazer = false;
+        $progresso->marcado_para_fazer_em = null;
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
@@ -566,6 +672,54 @@ class VerProgresso extends Page
         };
     }
 
+    public function abrirEdicaoData(string $tipo, int $itemId, ?string $dataAtual): void
+    {
+        $this->editandoDataTipo = $tipo;
+        $this->editandoDataItemId = $itemId;
+        $this->editandoDataValor = $dataAtual ?? Carbon::today()->toDateString();
+    }
+
+    public function fecharEdicaoData(): void
+    {
+        $this->editandoDataTipo = null;
+        $this->editandoDataItemId = null;
+    }
+
+    /**
+     * Só existe pra quem já está concluído (não faz sentido "agendar" uma
+     * data de conclusão pra algo ainda pendente — pra isso já existe o
+     * prazo do "quero fazer").
+     */
+    private function progressoParaEdicaoDeData(): ProgressoAntigo|ProgressoNovo|ProgressoPersonalizado|ProgressoEspecialidade|null
+    {
+        $jovemId = $this->getRecord()->id;
+
+        return match ($this->editandoDataTipo) {
+            'antigo' => ProgressoAntigo::where('jovem_id', $jovemId)->where('item_antigo_id', $this->editandoDataItemId)->first(),
+            'novo' => ProgressoNovo::where('jovem_id', $jovemId)->where('item_novo_id', $this->editandoDataItemId)->first(),
+            'personalizado' => ProgressoPersonalizado::where('jovem_id', $jovemId)->where('item_personalizado_id', $this->editandoDataItemId)->first(),
+            'especialidade' => ProgressoEspecialidade::where('jovem_id', $jovemId)->where('especialidade_distintivo_item_id', $this->editandoDataItemId)->first(),
+            default => null,
+        };
+    }
+
+    public function salvarEdicaoData(): void
+    {
+        $progresso = $this->progressoParaEdicaoDeData();
+
+        if (! $progresso || ! $progresso->concluido || blank($this->editandoDataValor)) {
+            return;
+        }
+
+        $progresso->data_conclusao = $this->editandoDataValor;
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+
+        $this->fecharEdicaoData();
+    }
+
     /**
      * Jovens do mesmo ramo que o adulto logado também pode gerenciar —
      * usado no seletor "também aplicar para" ao criar um item
@@ -664,6 +818,11 @@ class VerProgresso extends Page
         $progresso->registrado_por_id = auth()->id();
         $progresso->solicitado_pelo_jovem = false;
         $progresso->solicitado_em = null;
+
+        if ($concluido) {
+            $progresso->marcado_para_fazer = false;
+            $progresso->marcado_para_fazer_em = null;
+        }
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();
@@ -690,6 +849,8 @@ class VerProgresso extends Page
         $progresso->registrado_por_id = auth()->id();
         $progresso->solicitado_pelo_jovem = false;
         $progresso->solicitado_em = null;
+        $progresso->marcado_para_fazer = false;
+        $progresso->marcado_para_fazer_em = null;
         $progresso->save();
 
         app(StatusProgressaoService::class)->limparCache();

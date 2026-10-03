@@ -3,11 +3,13 @@
 @php
     $jovemAtual = app(\App\Services\Portal\SessaoJovemService::class)->jovemAutenticado();
     $contagemRevisao = $jovemAtual ? app(\App\Services\StatusProgressaoService::class)->contagemAguardandoRevisao($jovemAtual) : 0;
+    $contagemQueroFazer = $jovemAtual ? app(\App\Services\StatusProgressaoService::class)->contagemMarcadosParaFazer($jovemAtual) : 0;
 
     $itens = [
         ['aba' => 'timeline', 'rota' => 'portal.timeline', 'label' => 'Linha do Tempo', 'icone' => 'heroicon-o-presentation-chart-line'],
         ['aba' => 'inicio', 'rota' => 'portal.progresso', 'label' => 'Início', 'icone' => 'heroicon-o-home'],
         ['aba' => 'revisao', 'rota' => 'portal.revisao', 'label' => 'Revisão', 'icone' => 'heroicon-o-clipboard-document-check', 'contagem' => $contagemRevisao],
+        ['aba' => 'quero-fazer', 'rota' => 'portal.quero-fazer', 'label' => 'Quero Fazer', 'icone' => 'heroicon-o-star', 'contagem' => $contagemQueroFazer],
     ];
 @endphp
 
@@ -22,7 +24,7 @@
             @php $estaAtiva = $ativa === $item['aba']; @endphp
             <a
                 href="{{ route($item['rota']) }}"
-                class="relative flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium sm:flex-none sm:flex-row sm:gap-2 sm:rounded-t-lg sm:px-3 sm:py-3 sm:text-sm {{ $estaAtiva ? 'font-semibold text-primary-600 dark:text-primary-400 sm:bg-primary-50 dark:sm:bg-primary-950/40' : 'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300' }}"
+                class="relative flex flex-1 flex-col items-center gap-1 py-2 text-center text-xs font-medium sm:flex-none sm:flex-row sm:gap-2 sm:rounded-t-lg sm:px-3 sm:py-3 sm:text-sm {{ $estaAtiva ? 'font-semibold text-primary-600 dark:text-primary-400 sm:bg-primary-50 dark:sm:bg-primary-950/40' : 'text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300' }}"
             >
                 <span class="relative">
                     <x-filament::icon :icon="$item['icone']" class="h-5 w-5" />
