@@ -186,6 +186,72 @@ it('especialidade conquistada credita o item novo vinculado via EquivalenciaEspe
     expect($this->service->itemNovoConcluido($this->jovem, $itemSubstitutiva))->toBeTrue();
 });
 
+it('sem nivel_minimo definido, atingir so o nivel 1 ja credita o item novo (comportamento padrao)', function () {
+    $especialidade = EspecialidadeDistintivo::create([
+        'nome' => 'Vida ao Ar Livre',
+        'tipo' => 'Especialidade',
+        'estrutura' => 'itens_niveis',
+        'minimo_nivel_1' => 1,
+        'minimo_nivel_2' => 2,
+    ]);
+    $grupo = $especialidade->grupos()->create(['chave' => 'itens']);
+    $item1 = $grupo->itens()->create(['texto' => 'Item 1']);
+    $grupo->itens()->create(['texto' => 'Item 2']);
+
+    $itemSubstitutiva = criarItemNovo($this->bloco, 'N-070', 'Substitutiva');
+    EquivalenciaEspecialidade::create(['especialidade_distintivo_id' => $especialidade->id, 'item_novo_id' => $itemSubstitutiva->id]);
+
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $item1->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+    $this->service->limparCache();
+
+    expect($this->service->itemNovoConcluido($this->jovem, $itemSubstitutiva))->toBeTrue();
+});
+
+it('com nivel_minimo=2, so credita o item novo quando a especialidade atinge o nivel 2', function () {
+    $especialidade = EspecialidadeDistintivo::create([
+        'nome' => 'Vida ao Ar Livre',
+        'tipo' => 'Especialidade',
+        'estrutura' => 'itens_niveis',
+        'minimo_nivel_1' => 1,
+        'minimo_nivel_2' => 2,
+    ]);
+    $grupo = $especialidade->grupos()->create(['chave' => 'itens']);
+    $item1 = $grupo->itens()->create(['texto' => 'Item 1']);
+    $item2 = $grupo->itens()->create(['texto' => 'Item 2']);
+
+    $itemSubstitutiva = criarItemNovo($this->bloco, 'N-080', 'Substitutiva');
+    EquivalenciaEspecialidade::create([
+        'especialidade_distintivo_id' => $especialidade->id,
+        'item_novo_id' => $itemSubstitutiva->id,
+        'nivel_minimo' => 2,
+    ]);
+
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $item1->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+    $this->service->limparCache();
+
+    expect($this->service->itemNovoConcluido($this->jovem, $itemSubstitutiva))->toBeFalse();
+
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $item2->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+    $this->service->limparCache();
+
+    expect($this->service->itemNovoConcluido($this->jovem, $itemSubstitutiva))->toBeTrue();
+});
+
 it('protege contra ciclo de equivalencia mal cadastrada, sem travar nem estourar erro', function () {
     $antigo = criarItemAntigo($this->competencia, 'A-050');
     $novo = criarItemNovo($this->bloco, 'N-050');

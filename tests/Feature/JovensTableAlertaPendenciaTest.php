@@ -4,9 +4,11 @@ use App\Filament\Resources\Jovens\Pages\ListJovens;
 use App\Models\BlocoNovo;
 use App\Models\EixoNovo;
 use App\Models\Equipe;
+use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
 use App\Models\Ramo;
@@ -43,7 +45,8 @@ it('marca o alerta para jovem com item pendente de avaliacao', function () {
 
     expect($registro->tem_pendencia_novo)->toBeTrue()
         ->and((bool) $registro->tem_pendencia_antigo)->toBeFalse()
-        ->and((bool) $registro->tem_pendencia_personalizado)->toBeFalse();
+        ->and((bool) $registro->tem_pendencia_personalizado)->toBeFalse()
+        ->and((bool) $registro->tem_pendencia_especialidade)->toBeFalse();
 });
 
 it('nao marca o alerta para jovem sem pendencias', function () {
@@ -85,4 +88,31 @@ it('marca o alerta quando a pendencia vem de um item personalizado', function ()
         ->firstWhere('id', $jovem->id);
 
     expect($registro->tem_pendencia_personalizado)->toBeTrue();
+});
+
+it('marca o alerta quando a pendencia vem de um requisito de especialidade', function () {
+    $jovem = Jovem::create(['nome' => 'Pendência de Especialidade', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade', 'estrutura' => 'atividades_temas']);
+    $grupo = $especialidade->grupos()->create(['chave' => 'itens']);
+    $item = $grupo->itens()->create(['texto' => 'Montar barraca']);
+
+    ProgressoEspecialidade::create([
+        'jovem_id' => $jovem->id,
+        'especialidade_distintivo_item_id' => $item->id,
+        'concluido' => false,
+        'solicitado_pelo_jovem' => true,
+        'solicitado_em' => now(),
+    ]);
+
+    $this->actingAs($this->admin);
+
+    $registro = Livewire::test(ListJovens::class)
+        ->assertCanSeeTableRecords([$jovem])
+        ->instance()
+        ->getTable()
+        ->getRecords()
+        ->firstWhere('id', $jovem->id);
+
+    expect($registro->tem_pendencia_especialidade)->toBeTrue();
 });

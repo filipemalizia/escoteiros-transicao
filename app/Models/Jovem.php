@@ -125,6 +125,11 @@ class Jovem extends Model
         return $this->hasMany(ProgressoPersonalizado::class);
     }
 
+    public function progressoEspecialidade(): HasMany
+    {
+        return $this->hasMany(ProgressoEspecialidade::class);
+    }
+
     public function requisito(string $chave): ?JovemRequisitoComplementar
     {
         return $this->requisitosComplementares->firstWhere('chave', $chave);

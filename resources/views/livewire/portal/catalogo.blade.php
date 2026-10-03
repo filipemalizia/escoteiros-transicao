@@ -42,7 +42,7 @@
         <input
             type="search"
             wire:model.live.debounce.300ms="busca"
-            placeholder="Buscar por nome..."
+            placeholder="Buscar por nome, requisito ou item equivalente..."
             class="flex-1 rounded-lg border-gray-300 text-sm placeholder:text-gray-400 focus:border-gray-500 focus:ring-gray-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
         />
         @if ($tipo !== 'Insígnia')
@@ -82,7 +82,9 @@
                     :alt="$especialidade->nome"
                 />
                 <div class="min-w-0 flex-1">
-                    <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ $especialidade->nome }}</div>
+                    <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                        <x-progresso.destaque :texto="$especialidade->nome" :busca="$busca" />
+                    </div>
                     <div class="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                         <span class="h-1.5 w-1.5 rounded-full {{ $colorida ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600' }}"></span>
                         {{ $rotulo }}
@@ -93,7 +95,9 @@
                 </div>
             </button>
         @empty
-            <p class="col-span-full text-sm text-gray-500 dark:text-gray-400">Nada encontrado.</p>
+            <p class="col-span-full text-sm text-gray-500 dark:text-gray-400">
+                {{ $tipo === 'Insígnia' ? 'Nenhuma Insígnia encontrada.' : 'Nenhuma Especialidade encontrada.' }}
+            </p>
         @endforelse
     </div>
 
@@ -138,7 +142,14 @@
                 </div>
             @endif
 
+            @php
+                $filtrarRequisitos = $this->especialidadeTemRequisitoCorrespondente($especialidadeAberta);
+            @endphp
             @foreach ($especialidadeAberta->grupos as $grupo)
+                @php
+                    $itensDoGrupo = $this->itensVisiveisNaBusca($grupo->itens, $filtrarRequisitos);
+                @endphp
+                @continue($itensDoGrupo->isEmpty())
                 <div class="mb-3">
                     @if ($especialidadeAberta->estrutura !== 'itens_niveis')
                         <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -152,11 +163,12 @@
                         <p class="mb-2 text-xs italic text-gray-500 dark:text-gray-400">{{ $grupo->mensagem_regras }}</p>
                     @endif
                     <ul class="space-y-1">
-                        @foreach ($grupo->itens as $item)
+                        @foreach ($itensDoGrupo as $item)
                             @php
                                 $registroEspecialidade = $progressoEspecialidadeMap[$item->id] ?? null;
                                 $concluidoEspecialidade = (bool) ($registroEspecialidade?->concluido);
                                 $solicitadoEspecialidade = (bool) ($registroEspecialidade?->solicitado_pelo_jovem);
+                                $queroFazerEspecialidade = (bool) ($registroEspecialidade?->marcado_para_fazer);
                                 $podeEnviarEspecialidade = ! $concluidoEspecialidade && ! $solicitadoEspecialidade;
                             @endphp
                             <li
@@ -165,7 +177,7 @@
                             >
                                 <x-progresso.status-icone :concluido="$concluidoEspecialidade" :solicitado="$solicitadoEspecialidade" class="mt-0.5" />
                                 <span class="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
-                                    <span>{{ $item->ordem ? "{$item->ordem}. " : '' }}{{ $item->texto }}</span>
+                                    <span>{{ $item->ordem ? "{$item->ordem}. " : '' }}<x-progresso.destaque :texto="$item->texto" :busca="$busca" /></span>
                                     @if ($concluidoEspecialidade && $registroEspecialidade?->data_conclusao)
                                         <span class="block w-full text-xs text-gray-400 dark:text-gray-500">
                                             Concluído em {{ $registroEspecialidade->data_conclusao->format('d/m/Y') }}
@@ -177,6 +189,12 @@
                                         </span>
                                     @endif
                                 </span>
+                                @if (! $concluidoEspecialidade)
+                                    <x-progresso.botao-quero-fazer
+                                        :marcado="$queroFazerEspecialidade"
+                                        wire-click="toggleQueroFazerEspecialidade({{ $item->id }})"
+                                    />
+                                @endif
                             </li>
                         @endforeach
                     </ul>

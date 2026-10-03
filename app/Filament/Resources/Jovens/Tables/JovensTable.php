@@ -38,11 +38,12 @@ class JovensTable
                 'progressoAntigo as tem_pendencia_antigo' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoNovo as tem_pendencia_novo' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoPersonalizado as tem_pendencia_personalizado' => fn (Builder $q) => self::comItemPendente($q),
+                'progressoEspecialidade as tem_pendencia_especialidade' => fn (Builder $q) => self::comItemPendente($q),
             ]))
             ->columns([
                 IconColumn::make('pendencia_revisao')
                     ->label('')
-                    ->getStateUsing(fn (Jovem $record) => $record->tem_pendencia_antigo || $record->tem_pendencia_novo || $record->tem_pendencia_personalizado)
+                    ->getStateUsing(fn (Jovem $record) => $record->tem_pendencia_antigo || $record->tem_pendencia_novo || $record->tem_pendencia_personalizado || $record->tem_pendencia_especialidade)
                     ->icon(fn (bool $state) => $state ? Heroicon::OutlinedExclamationTriangle : null)
                     ->color('warning')
                     ->tooltip(fn (bool $state) => $state ? 'Possui itens aguardando avaliação' : null),
@@ -79,8 +80,8 @@ class JovensTable
                     ->label('Ver Progresso')
                     ->icon(Heroicon::OutlinedClipboardDocumentCheck)
                     ->url(fn (Jovem $record) => JovemResource::getUrl('progresso', ['record' => $record])),
-                EditAction::make(),
-                DeleteAction::make(),
+                EditAction::make()->hiddenLabel(),
+                DeleteAction::make()->hiddenLabel(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

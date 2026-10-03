@@ -26,6 +26,9 @@ class EquivalenciaEspecialidadesTable
                     ->label('Item Novo')
                     ->description(fn ($record) => $record->itemNovo?->descricao)
                     ->searchable(),
+                TextColumn::make('nivel_minimo')
+                    ->label('Nível mínimo')
+                    ->formatStateUsing(fn (?int $state) => $state ? "Nível {$state}" : 'Qualquer'),
                 TextColumn::make('observacao')
                     ->limit(40)
                     ->toggleable(isToggledHiddenByDefault: true),

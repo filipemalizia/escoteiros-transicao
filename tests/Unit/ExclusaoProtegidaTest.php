@@ -4,6 +4,7 @@ use App\Models\AreaDesenvolvimentoAntiga;
 use App\Models\BlocoNovo;
 use App\Models\CompetenciaAntiga;
 use App\Models\EixoNovo;
+use App\Models\EntregaDistintivo;
 use App\Models\Equivalencia;
 use App\Models\EquivalenciaBloco;
 use App\Models\EquivalenciaEspecialidade;
@@ -156,6 +157,20 @@ it('EspecialidadeDistintivo reflete se possui equivalencia de especialidade vinc
     EquivalenciaEspecialidade::create([
         'especialidade_distintivo_id' => $especialidade->id,
         'item_novo_id' => $this->itemNovo->id,
+    ]);
+
+    expect($especialidade->fresh()->possuiItensComDadosVinculados())->toBeTrue();
+});
+
+it('EspecialidadeDistintivo reflete se possui entrega de distintivo vinculada', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Acampamento', 'tipo' => 'Especialidade']);
+
+    expect($especialidade->possuiItensComDadosVinculados())->toBeFalse();
+
+    EntregaDistintivo::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_id' => $especialidade->id,
+        'comprado_em' => today(),
     ]);
 
     expect($especialidade->fresh()->possuiItensComDadosVinculados())->toBeTrue();

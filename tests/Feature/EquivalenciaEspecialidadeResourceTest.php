@@ -27,6 +27,7 @@ it('admin cria uma equivalencia entre especialidade e item novo pelo Filament', 
         ->fillForm([
             'especialidade_distintivo_id' => $especialidade->id,
             'item_novo_id' => $item->id,
+            'nivel_minimo' => 2,
             'observacao' => 'Quem tem a especialidade de Acampamento já cumpre este item.',
         ])
         ->call('create')
@@ -35,5 +36,6 @@ it('admin cria uma equivalencia entre especialidade e item novo pelo Filament', 
     $equivalencia = EquivalenciaEspecialidade::where('item_novo_id', $item->id)->first();
 
     expect($equivalencia)->not->toBeNull()
-        ->and($equivalencia->especialidade_distintivo_id)->toBe($especialidade->id);
+        ->and($equivalencia->especialidade_distintivo_id)->toBe($especialidade->id)
+        ->and($equivalencia->nivel_minimo)->toBe(2);
 });

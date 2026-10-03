@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Equivalencia;
 use App\Models\EquivalenciaEspecialidade;
-use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\Jovem;
@@ -193,15 +192,24 @@ class EquivalenciaCreditoService
      */
     private function itemNovoConcluidoViaEspecialidade(Jovem $jovem, ItemNovo $item): bool
     {
-        $especialidades = EquivalenciaEspecialidade::query()
+        return EquivalenciaEspecialidade::query()
             ->where('item_novo_id', $item->id)
             ->with('especialidadeDistintivo')
             ->get()
-            ->pluck('especialidadeDistintivo')
-            ->filter();
+            ->filter(fn (EquivalenciaEspecialidade $equivalencia) => $equivalencia->especialidadeDistintivo !== null)
+            ->contains(function (EquivalenciaEspecialidade $equivalencia) use ($jovem) {
+                $status = $this->especialidadeStatusService->statusEspecialidade($jovem, $equivalencia->especialidadeDistintivo);
 
-        return $especialidades->contains(
-            fn (EspecialidadeDistintivo $especialidade) => $this->especialidadeStatusService->statusEspecialidade($jovem, $especialidade)['status'] === 'Concluído'
-        );
+                if ($status['status'] !== 'Concluído') {
+                    return false;
+                }
+
+                // nivel_minimo=null (padrão) aceita qualquer nível; nivel_atingido
+                // vem null pra especialidades sem estrutura de níveis (atividades_temas
+                // ou Insígnia), que também não têm como ser exigidas num nível específico.
+                return $equivalencia->nivel_minimo === null
+                    || $status['nivel_atingido'] === null
+                    || $status['nivel_atingido'] >= $equivalencia->nivel_minimo;
+            });
     }
 }

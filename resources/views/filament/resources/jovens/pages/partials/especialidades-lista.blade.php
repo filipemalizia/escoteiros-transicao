@@ -5,6 +5,7 @@
      * @var \Closure $aguardandoAvaliacao
      * @var \Closure $corStatus
      * @var string $mensagemVazio
+     * @var string $busca
      */
 @endphp
 
@@ -14,17 +15,25 @@
             $statusEspecialidade = $this->statusEspecialidade($especialidade);
             $itensDaEspecialidade = $especialidade->grupos->flatMap->itens;
             $avaliacoesPendentesEspecialidade = $itensDaEspecialidade->filter(fn ($item) => $aguardandoAvaliacao($progressoEspecialidadeMap[$item->id] ?? null))->count();
+            $queroFazerEspecialidade = $itensDaEspecialidade->contains(function ($item) use ($progressoEspecialidadeMap) {
+                $registro = $progressoEspecialidadeMap[$item->id] ?? null;
+
+                return $registro && $registro->marcado_para_fazer && ! $registro->concluido;
+            });
             $badgeStatus = $statusEspecialidade['nivel_atingido'] !== null
                 ? ($statusEspecialidade['nivel_atingido'] > 0 ? "Nível {$statusEspecialidade['nivel_atingido']}" : 'Pendente')
                 : $statusEspecialidade['status'];
+            $headingDestacado = \App\Support\Destaque::html($especialidade->nome, $busca ?? '');
         @endphp
         <x-progresso.accordion
             :id="'especialidade-'.$especialidade->id"
             :heading="$especialidade->nome"
+            :heading-html="$headingDestacado"
             :description="$especialidade->descricao"
             :status="$badgeStatus"
             :status-color="$corStatus($statusEspecialidade['status'])"
             :avaliacoes-pendentes="$avaliacoesPendentesEspecialidade"
+            :quero-fazer="$queroFazerEspecialidade"
         >
             @if ($statusEspecialidade['status'] === 'Concluído' || ($statusEspecialidade['nivel_atingido'] ?? 0) >= 1)
                 <x-slot:acoes>
@@ -39,6 +48,7 @@
             @endif
 
             @foreach ($especialidade->grupos as $grupo)
+                @continue($grupo->itens->isEmpty())
                 <div class="mb-3">
                     @if ($especialidade->estrutura !== 'itens_niveis')
                         <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -57,26 +67,32 @@
                                 $registroEspecialidade = $progressoEspecialidadeMap[$item->id] ?? null;
                                 $concluidoEspecialidade = (bool) ($registroEspecialidade?->concluido);
                                 $solicitadoEspecialidade = (bool) ($registroEspecialidade?->solicitado_pelo_jovem);
+                                // Se o jovem já enviou isso pra avaliação, o checkbox não marca
+                                // direto — abre o fluxo de Avaliação certo (mesmo botão de
+                                // baixo), pra evitar que o chefe marque sem querer sem ver a
+                                // observação do jovem antes.
+                                $acaoCheckboxEspecialidade = $solicitadoEspecialidade ? "abrirAvaliacao('especialidade', {$item->id})" : "toggleEspecialidade({$item->id})";
                             @endphp
                             <li wire:key="item-especialidade-{{ $item->id }}-{{ $concluidoEspecialidade ? 1 : 0 }}" class="flex flex-wrap items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-white/5">
                                 <label class="-mx-3 flex flex-1 cursor-pointer items-start gap-3 px-3">
                                     <input
                                         type="checkbox"
-                                        wire:click="toggleEspecialidade({{ $item->id }})"
+                                        wire:click="{{ $acaoCheckboxEspecialidade }}"
                                         @checked($concluidoEspecialidade)
                                         class="mt-0.5 h-6 w-6 shrink-0 rounded border-gray-300 accent-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-1 dark:border-gray-600 dark:focus:ring-offset-gray-900"
                                     />
                                     <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
-                                        <span>{{ $item->texto }}</span>
+                                        <span><x-progresso.destaque :texto="$item->texto" :busca="$busca ?? ''" /></span>
+                                        <x-progresso.indicador-quero-fazer :marcado="! $concluidoEspecialidade && (bool) ($registroEspecialidade?->marcado_para_fazer)" />
                                         @if ($solicitadoEspecialidade && ! $concluidoEspecialidade)
                                             <x-filament::badge color="warning" size="sm">
                                                 Aguardando avaliação
                                             </x-filament::badge>
-                                            @if ($registroEspecialidade?->observacao_jovem)
-                                                <span class="block w-full text-xs italic text-gray-500 dark:text-gray-400">
-                                                    "{{ $registroEspecialidade->observacao_jovem }}"
-                                                </span>
-                                            @endif
+                                        @endif
+                                        @if ($registroEspecialidade?->observacao_jovem)
+                                            <span class="block w-full text-xs italic text-gray-500 dark:text-gray-400">
+                                                "{{ $registroEspecialidade->observacao_jovem }}"
+                                            </span>
                                         @endif
                                         @if ($concluidoEspecialidade && $registroEspecialidade?->data_conclusao)
                                             <span class="block w-full text-xs text-gray-400 dark:text-gray-500">
@@ -84,6 +100,7 @@
                                                 @if ($registroEspecialidade->registradoPor)
                                                     por {{ $registroEspecialidade->registradoPor->name }}
                                                 @endif
+                                                <x-progresso.botao-editar-data wire-click="abrirEdicaoData('especialidade', {{ $item->id }}, '{{ $registroEspecialidade->data_conclusao->toDateString() }}')" />
                                             </span>
                                         @endif
                                     </span>

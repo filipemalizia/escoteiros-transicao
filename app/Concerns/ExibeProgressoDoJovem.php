@@ -21,6 +21,7 @@ use App\Services\EquivalenciaCreditoService;
 use App\Services\EtapaProgressaoService;
 use App\Services\ImagemDataUriService;
 use App\Services\StatusProgressaoService;
+use App\Support\Busca;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 
@@ -398,7 +399,7 @@ trait ExibeProgressoDoJovem
     {
         return EspecialidadeDistintivo::query()
             ->paraRamo($this->jovem()->ramo_atual_id)
-            ->with('grupos.itens')
+            ->with(['grupos.itens', 'equivalenciasEspecialidade.itemNovo'])
             ->orderBy('nome')
             ->get();
     }
@@ -713,5 +714,152 @@ trait ExibeProgressoDoJovem
                 'solicitado_em' => $progresso->solicitado_em,
             ])
             ->all();
+    }
+
+    /**
+     * Itens (dos 3 tipos) que o jovem marcou como "quero fazer" e ainda não
+     * concluiu — a "listinha" pessoal dele, agregada, análoga a
+     * {@see getItensAguardandoRevisao()} mas pra marcação em vez de
+     * avaliação pendente. Inclui `item_id` (que a Revisão não precisa) pra
+     * permitir desmarcar direto da lista agregada.
+     *
+     * @return array<int, array{tipo: string, item_id: int, texto: string, contexto: string, solicitado: bool, marcado_para_fazer_em: Carbon, data_alvo: ?Carbon}>
+     */
+    public function getItensMarcadosParaFazer(): array
+    {
+        $itens = [
+            ...$this->itensNovosMarcadosParaFazer(),
+            ...$this->itensPersonalizadosMarcadosParaFazer(),
+            ...$this->itensEspecialidadeMarcadosParaFazer(),
+        ];
+
+        usort($itens, fn (array $a, array $b) => $b['marcado_para_fazer_em'] <=> $a['marcado_para_fazer_em']);
+
+        return $itens;
+    }
+
+    /**
+     * @return array<int, array{tipo: string, item_id: int, texto: string, contexto: string, solicitado: bool, marcado_para_fazer_em: Carbon, data_alvo: ?Carbon}>
+     */
+    private function itensNovosMarcadosParaFazer(): array
+    {
+        return ProgressoNovo::query()
+            ->where('jovem_id', $this->jovem()->id)
+            ->where('marcado_para_fazer', true)
+            ->where('concluido', false)
+            ->with('itemNovo.bloco.eixo')
+            ->get()
+            ->filter(fn (ProgressoNovo $progresso) => $progresso->itemNovo !== null)
+            ->map(fn (ProgressoNovo $progresso) => [
+                'tipo' => 'novo',
+                'item_id' => $progresso->item_novo_id,
+                'texto' => $progresso->itemNovo->descricao,
+                'contexto' => "{$progresso->itemNovo->bloco->titulo} ({$progresso->itemNovo->bloco->eixo->nome})",
+                'solicitado' => $progresso->solicitado_pelo_jovem,
+                'marcado_para_fazer_em' => $progresso->marcado_para_fazer_em,
+                'data_alvo' => $progresso->data_alvo,
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, array{tipo: string, item_id: int, texto: string, contexto: string, solicitado: bool, marcado_para_fazer_em: Carbon, data_alvo: ?Carbon}>
+     */
+    private function itensPersonalizadosMarcadosParaFazer(): array
+    {
+        return ProgressoPersonalizado::query()
+            ->where('jovem_id', $this->jovem()->id)
+            ->where('marcado_para_fazer', true)
+            ->where('concluido', false)
+            ->with('itemPersonalizado.bloco.eixo')
+            ->get()
+            ->filter(fn (ProgressoPersonalizado $progresso) => $progresso->itemPersonalizado !== null)
+            ->map(fn (ProgressoPersonalizado $progresso) => [
+                'tipo' => 'personalizado',
+                'item_id' => $progresso->item_personalizado_id,
+                'texto' => $progresso->itemPersonalizado->descricao,
+                'contexto' => "{$progresso->itemPersonalizado->bloco->titulo} ({$progresso->itemPersonalizado->bloco->eixo->nome})",
+                'solicitado' => $progresso->solicitado_pelo_jovem,
+                'marcado_para_fazer_em' => $progresso->marcado_para_fazer_em,
+                'data_alvo' => $progresso->data_alvo,
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, array{tipo: string, item_id: int, texto: string, contexto: string, solicitado: bool, marcado_para_fazer_em: Carbon, data_alvo: ?Carbon}>
+     */
+    private function itensEspecialidadeMarcadosParaFazer(): array
+    {
+        return ProgressoEspecialidade::query()
+            ->where('jovem_id', $this->jovem()->id)
+            ->where('marcado_para_fazer', true)
+            ->where('concluido', false)
+            ->with('item.grupo.especialidadeDistintivo')
+            ->get()
+            ->filter(fn (ProgressoEspecialidade $progresso) => $progresso->item !== null)
+            ->map(fn (ProgressoEspecialidade $progresso) => [
+                'tipo' => 'especialidade',
+                'item_id' => $progresso->especialidade_distintivo_item_id,
+                'texto' => $progresso->item->texto,
+                'contexto' => $progresso->item->grupo->especialidadeDistintivo->nome,
+                'solicitado' => $progresso->solicitado_pelo_jovem,
+                'marcado_para_fazer_em' => $progresso->marcado_para_fazer_em,
+                'data_alvo' => $progresso->data_alvo,
+            ])
+            ->all();
+    }
+
+    /**
+     * Especialidades/Insígnias (os dois tipos juntos) que casam com a busca
+     * — usado pela busca geral (jovem e adulto), que ao contrário do
+     * Catálogo não se restringe a um tipo nem a um eixo.
+     *
+     * @return Collection<int, EspecialidadeDistintivo>
+     */
+    public function especialidadesDaBuscaGeral(string $busca): Collection
+    {
+        if (blank($busca)) {
+            return new Collection;
+        }
+
+        return EspecialidadeDistintivo::query()
+            ->paraRamo($this->jovem()->ramo_atual_id)
+            ->with('grupos.itens', 'equivalenciasEspecialidade.itemNovo')
+            ->orderBy('nome')
+            ->get()
+            ->filter(fn (EspecialidadeDistintivo $especialidade) => Busca::contemTodasAsPalavras([
+                $especialidade->nome,
+                ...$especialidade->grupos->flatMap->itens->pluck('texto')->all(),
+                ...$especialidade->equivalenciasEspecialidade
+                    ->filter(fn ($equivalencia) => $equivalencia->itemNovo !== null)
+                    ->flatMap(fn ($equivalencia) => [$equivalencia->itemNovo->codigo, $equivalencia->itemNovo->descricao])
+                    ->all(),
+            ], $busca))
+            ->values();
+    }
+
+    /**
+     * Itens do Programa Novo (por código/descrição) que casam com a busca,
+     * em qualquer Eixo/Bloco do ramo atual do jovem — mesma busca geral de
+     * {@see especialidadesDaBuscaGeral()}, só que sem se restringir a um
+     * tipo de especialidade.
+     *
+     * @return Collection<int, ItemNovo>
+     */
+    public function itensDeProgressaoDaBuscaGeral(string $busca): Collection
+    {
+        if (blank($busca)) {
+            return new Collection;
+        }
+
+        return ItemNovo::query()
+            ->whereHas('bloco.eixo', fn ($query) => $query->where('ramo_id', $this->jovem()->ramo_atual_id))
+            ->whereIn('modalidade', ['Básica', $this->jovem()->modalidade()])
+            ->with('bloco.eixo')
+            ->orderBy('codigo')
+            ->get()
+            ->filter(fn (ItemNovo $item) => Busca::contemTodasAsPalavras([$item->codigo, $item->descricao], $busca))
+            ->values();
     }
 }

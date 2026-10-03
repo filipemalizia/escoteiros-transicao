@@ -5,21 +5,33 @@
     'status' => null,
     'statusColor' => 'gray',
     'meta' => null,
+    'headingHtml' => null,
     'pendencia' => null,
     'avaliacoesPendentes' => 0,
+    'queroFazer' => false,
     'comImagem' => false,
     'imagemUrl' => null,
     'imagemColorida' => false,
+    'abertoPorPadrao' => false,
 ])
 
 {{--
-    Acordeão fechado por padrão, usado tanto na tela de progresso do painel
-    quanto no portal público do jovem. Não usa o `x-collapse` do Alpine
-    (plugin opcional) porque o portal público não carrega o bundle de JS do
-    Filament — só `x-show`, pra funcionar igual nos dois contextos.
+    Acordeão fechado por padrão (a menos que `abertoPorPadrao` diga o
+    contrário — usado por deep links de busca), usado tanto na tela de
+    progresso do painel quanto no portal público do jovem. Não usa o
+    `x-collapse` do Alpine (plugin opcional) porque o portal público não
+    carrega o bundle de JS do Filament — só `x-show`, pra funcionar igual
+    nos dois contextos.
+
+    O listener de `abrir-acordeao` existe pro caminho do adulto: como a
+    tela inteira já está renderizada (não há navegação entre páginas como
+    no portal), abrir um bloco específico a partir do modal "Buscar em
+    tudo" precisa de um evento de browser em vez de só um query param.
 --}}
 <div
-    x-data="{ open: false }"
+    x-data="{ open: {{ $abertoPorPadrao ? 'true' : 'false' }} }"
+    x-init="if (open) { $nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'start' })) }"
+    x-on:abrir-acordeao.window="if ($event.detail.id === '{{ $id }}') { open = true; $nextTick(() => $el.scrollIntoView({ behavior: 'smooth', block: 'start' })) }"
     id="{{ $id }}"
     {{
         $attributes->class([
@@ -39,7 +51,14 @@
                     @if ($status)
                         <x-progresso.badge :color="$statusColor">{{ $status }}</x-progresso.badge>
                     @endif
-                    <span class="text-sm font-semibold text-gray-950 dark:text-white">{{ $heading }}</span>
+                    <span class="text-sm font-semibold text-gray-950 dark:text-white">
+                        @if ($headingHtml)
+                            {!! $headingHtml !!}
+                        @else
+                            {{ $heading }}
+                        @endif
+                    </span>
+                    <x-progresso.indicador-quero-fazer :marcado="$queroFazer" />
                     @if ($meta)
                         <span class="text-sm font-normal text-gray-500 dark:text-gray-400">{{ $meta }}</span>
                     @endif

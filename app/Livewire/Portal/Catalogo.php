@@ -4,18 +4,22 @@ namespace App\Livewire\Portal;
 
 use App\Concerns\ExibeProgressoDoJovem;
 use App\Concerns\Portal\AutenticaJovemNoPortal;
+use App\Concerns\Portal\MarcaQueroFazer;
 use App\Models\EspecialidadeDistintivo;
 use App\Models\EspecialidadeDistintivoItem;
 use App\Models\ProgressoEspecialidade;
 use App\Services\Portal\SessaoJovemService;
+use App\Support\Busca;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Collection;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 class Catalogo extends Component
 {
     use AutenticaJovemNoPortal;
     use ExibeProgressoDoJovem;
+    use MarcaQueroFazer;
 
     /**
      * Valor de `tipo` na tabela `especialidades_distintivos` ('Especialidade'
@@ -23,6 +27,7 @@ class Catalogo extends Component
      */
     public string $tipo;
 
+    #[Url(as: 'q', history: true)]
     public string $busca = '';
 
     public ?int $eixoId = null;
@@ -60,6 +65,10 @@ class Catalogo extends Component
             'insignias' => 'Insígnia',
             default => abort(404),
         };
+
+        // Deep link vindo da Busca Geral (?abrir=id): já abre o modal de
+        // detalhe, sem precisar de mais um clique em cima do card.
+        $this->especialidadeAbertaId = request()->integer('abrir') ?: null;
     }
 
     public function titulo(): string
@@ -82,14 +91,26 @@ class Catalogo extends Component
                     ->orWhereIn('modalidade', ['Geral', $this->jovem()->modalidade()])
                 ),
             )
-            ->when($this->busca, fn ($query) => $query->where('nome', 'like', '%'.$this->busca.'%'))
             ->when($this->tipo !== 'Insígnia' && $this->eixoId, fn ($query) => $query->whereHas(
                 'eixosNovos',
                 fn ($query) => $query->where('eixos_novos.id', $this->eixoId),
             ))
-            ->with('grupos.itens')
+            ->with('grupos.itens', 'equivalenciasEspecialidade.itemNovo')
             ->orderBy('nome')
             ->get();
+
+        if (filled($this->busca)) {
+            $especialidades = $especialidades
+                ->filter(fn (EspecialidadeDistintivo $especialidade) => Busca::contemTodasAsPalavras([
+                    $especialidade->nome,
+                    ...$especialidade->grupos->flatMap->itens->pluck('texto')->all(),
+                    ...$especialidade->equivalenciasEspecialidade
+                        ->filter(fn ($equivalencia) => $equivalencia->itemNovo !== null)
+                        ->flatMap(fn ($equivalencia) => [$equivalencia->itemNovo->codigo, $equivalencia->itemNovo->descricao])
+                        ->all(),
+                ], $this->busca))
+                ->values();
+        }
 
         if ($this->tipo !== 'Insígnia' && $this->aba === 'minhas') {
             $especialidades = $especialidades->filter(
@@ -98,6 +119,38 @@ class Catalogo extends Component
         }
 
         return $especialidades;
+    }
+
+    /**
+     * Se algum requisito desta especialidade/insígnia casa com a busca
+     * atual — usado pra decidir se filtra os requisitos exibidos (ver
+     * {@see itensVisiveisNaBusca()}) ou se mostra todos (caso ela só tenha
+     * "entrado" no resultado pelo nome ou pelo item novo equivalente).
+     */
+    public function especialidadeTemRequisitoCorrespondente(EspecialidadeDistintivo $especialidade): bool
+    {
+        if (blank($this->busca)) {
+            return false;
+        }
+
+        return $especialidade->grupos->flatMap->itens->contains(
+            fn (EspecialidadeDistintivoItem $item) => Busca::contemTodasAsPalavras($item->texto, $this->busca)
+        );
+    }
+
+    /**
+     * @param  Collection<int, EspecialidadeDistintivoItem>  $itens
+     * @return Collection<int, EspecialidadeDistintivoItem>
+     */
+    public function itensVisiveisNaBusca(Collection $itens, bool $filtrar): Collection
+    {
+        if (! $filtrar) {
+            return $itens;
+        }
+
+        return $itens
+            ->filter(fn (EspecialidadeDistintivoItem $item) => Busca::contemTodasAsPalavras($item->texto, $this->busca))
+            ->values();
     }
 
     /**

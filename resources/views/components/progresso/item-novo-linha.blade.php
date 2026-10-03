@@ -1,7 +1,8 @@
-@props(['item', 'registro' => null, 'concluidoGeral' => false, 'solicitado' => false])
+@props(['item', 'registro' => null, 'concluidoGeral' => false, 'solicitado' => false, 'busca' => ''])
 
 @php
     $marcadoDireto = (bool) ($registro?->concluido);
+    $queroFazer = (bool) ($registro?->marcado_para_fazer);
     $podeEnviar = ! $concluidoGeral && ! $solicitado;
 
     $corTipoAcao = fn (string $tipo) => match ($tipo) {
@@ -18,10 +19,10 @@
 >
     <x-progresso.status-icone :concluido="$concluidoGeral" :solicitado="$solicitado" class="mt-0.5" />
     <span class="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
-        <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ $item->codigo }}</span>
+        <span class="font-mono text-xs text-gray-500 dark:text-gray-400"><x-progresso.destaque :texto="$item->codigo" :busca="$busca" /></span>
         <x-progresso.badge :color="$corTipoAcao($item->tipo_acao)">{{ $item->tipo_acao }}</x-progresso.badge>
         <x-progresso.icone-modalidade :modalidade="$item->modalidade" />
-        <span>{{ $item->descricao }}</span>
+        <span><x-progresso.destaque :texto="$item->descricao" :busca="$busca" /></span>
         @if ($item->especialidade)
             <span class="text-gray-500 dark:text-gray-400">({{ $item->especialidade->tipo }}: {{ $item->especialidade->nome }})</span>
         @endif
@@ -39,4 +40,10 @@
             </span>
         @endif
     </span>
+    @if (! $concluidoGeral)
+        <x-progresso.botao-quero-fazer
+            :marcado="$queroFazer"
+            wire-click="toggleQueroFazerNovo({{ $item->id }})"
+        />
+    @endif
 </li>

@@ -1,8 +1,11 @@
 <?php
 
 use App\Filament\Resources\Jovens\Pages\VerProgresso;
+use App\Models\BlocoNovo;
 use App\Models\EixoNovo;
+use App\Models\EquivalenciaEspecialidade;
 use App\Models\EspecialidadeDistintivo;
+use App\Models\ItemNovo;
 use App\Models\Jovem;
 use App\Models\ProgressoEspecialidade;
 use App\Models\Ramo;
@@ -61,6 +64,26 @@ it('mostra a secao de especialidades na propria aba', function () {
         ->assertSee('Montar barraca');
 });
 
+it('mostra o indicador de quero fazer (so leitura) quando o jovem marcou o item', function () {
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->assertDontSee("Jovem marcou como 'quero fazer'", false);
+
+    $this->progresso->update(['marcado_para_fazer' => true]);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->assertSee("Jovem marcou como 'quero fazer'", false);
+});
+
+it('nao mostra o indicador de quero fazer se o item ja estiver concluido, mesmo que a marcacao nao tenha sido limpa', function () {
+    $this->progresso->update(['marcado_para_fazer' => true, 'concluido' => true, 'data_conclusao' => now()]);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->assertDontSee("Jovem marcou como 'quero fazer'", false);
+});
+
 it('mostra insignias na propria aba, separada das especialidades', function () {
     $insignia = EspecialidadeDistintivo::create([
         'nome' => 'Mensageiros da Paz',
@@ -94,7 +117,8 @@ it('cada secao tem sua propria busca, independente uma da outra', function () {
     Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
         ->set('abaAtiva', 'especialidades')
         ->set('buscaEspecialidades', 'acampa')
-        ->assertSee('Acampamento')
+        ->assertSeeText('Acampamento')
+        ->assertSee('<mark', false)
         ->assertDontSee('Primeiros Socorros');
 
     Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
@@ -102,6 +126,93 @@ it('cada secao tem sua propria busca, independente uma da outra', function () {
         ->set('buscaEspecialidades', 'nao existe')
         ->assertDontSee('Acampamento')
         ->assertDontSee('Primeiros Socorros');
+});
+
+it('busca de especialidade tambem casa com o texto de um requisito', function () {
+    $outraEspecialidade = EspecialidadeDistintivo::create([
+        'nome' => 'Primeiros Socorros',
+        'tipo' => 'Especialidade',
+        'estrutura' => 'atividades_temas',
+    ]);
+    $outraEspecialidade->eixosNovos()->attach($this->especialidade->eixosNovos->first()->id);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->set('buscaEspecialidades', 'barraca')
+        ->assertSee('Acampamento')
+        ->assertDontSee('Primeiros Socorros');
+});
+
+it('busca de especialidade tambem casa com o item do programa novo equivalente', function () {
+    $outraEspecialidade = EspecialidadeDistintivo::create([
+        'nome' => 'Primeiros Socorros',
+        'tipo' => 'Especialidade',
+        'estrutura' => 'atividades_temas',
+    ]);
+    $outraEspecialidade->eixosNovos()->attach($this->especialidade->eixosNovos->first()->id);
+
+    $eixo = EixoNovo::create(['ramo_id' => $this->ramo->id, 'nome' => 'Vida ao Ar Livre']);
+    $bloco = BlocoNovo::create(['eixo_id' => $eixo->id, 'titulo' => 'Bloco Teste', 'quantidade_minima_variaveis' => 1]);
+    $itemNovo = ItemNovo::create([
+        'bloco_id' => $bloco->id,
+        'codigo' => 'VAL-010',
+        'descricao' => 'Organizar uma expedição de campismo',
+        'tipo_acao' => 'Substitutiva',
+    ]);
+    EquivalenciaEspecialidade::create([
+        'especialidade_distintivo_id' => $this->especialidade->id,
+        'item_novo_id' => $itemNovo->id,
+    ]);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->set('buscaEspecialidades', 'campismo')
+        ->assertSee('Acampamento')
+        ->assertDontSee('Primeiros Socorros');
+});
+
+it('busca com varias palavras encontra mesmo quando elas estao em campos diferentes', function () {
+    $outraEspecialidade = EspecialidadeDistintivo::create([
+        'nome' => 'Primeiros Socorros',
+        'tipo' => 'Especialidade',
+        'estrutura' => 'atividades_temas',
+    ]);
+    $outraEspecialidade->eixosNovos()->attach($this->especialidade->eixosNovos->first()->id);
+
+    // "acampa" bate no nome, "barraca" bate no requisito - só o conjunto
+    // dos dois campos tem as duas palavras.
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->set('buscaEspecialidades', 'acampa barraca')
+        ->assertSeeText('Acampamento')
+        ->assertDontSee('Primeiros Socorros');
+});
+
+it('busca com varias palavras exige todas, nao so uma', function () {
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->set('buscaEspecialidades', 'acampa inexistente')
+        ->assertDontSee('Acampamento');
+});
+
+it('mostra todos os requisitos mesmo quando a busca bate em so um deles, pra nao quebrar a visao completa da especialidade', function () {
+    $this->especialidade->grupos->first()->itens()->create(['texto' => 'Fazer uma fogueira segura']);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->set('buscaEspecialidades', 'fogueira')
+        ->assertSeeText('Fazer uma fogueira segura')
+        ->assertSee('Montar barraca');
+});
+
+it('mostra todos os requisitos quando a busca so bate no nome da especialidade', function () {
+    $this->especialidade->grupos->first()->itens()->create(['texto' => 'Fazer uma fogueira segura']);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->set('buscaEspecialidades', 'acampa')
+        ->assertSee('Montar barraca')
+        ->assertSeeText('Fazer uma fogueira segura');
 });
 
 it('conta avaliacoes pendentes separadamente por especialidade e insignia', function () {
@@ -134,6 +245,34 @@ it('mostra a observacao do jovem pro chefe quando existir', function () {
     Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
         ->set('abaAtiva', 'especialidades')
         ->assertSee('Fiz o acampamento no fim de semana passado.');
+});
+
+it('continua mostrando a observacao do jovem mesmo depois do item ser marcado direto pelo checkbox', function () {
+    $this->progresso->update(['observacao_jovem' => 'Fiz o acampamento no fim de semana passado.']);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->call('toggleEspecialidade', $this->item->id)
+        ->assertSee('Fiz o acampamento no fim de semana passado.');
+
+    expect($this->progresso->fresh()->concluido)->toBeTrue();
+});
+
+it('o checkbox de um item que o jovem ja enviou pra avaliacao abre o fluxo de avaliacao, em vez de marcar direto', function () {
+    $this->progresso->update(['observacao_jovem' => 'Fiz o acampamento no fim de semana passado.']);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->assertSee("abrirAvaliacao('especialidade', {$this->item->id})")
+        ->assertDontSee("toggleEspecialidade({$this->item->id})");
+});
+
+it('o checkbox de um item que nao foi enviado pra avaliacao marca direto', function () {
+    $this->progresso->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+
+    Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->assertSee("toggleEspecialidade({$this->item->id})");
 });
 
 it('abre o modal de avaliacao ao clicar no botao, e fecha ao cancelar', function () {

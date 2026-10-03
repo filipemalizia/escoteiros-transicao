@@ -64,15 +64,22 @@ class EspecialidadeDistintivo extends Model implements HasMedia
         return $this->hasMany(EquivalenciaEspecialidade::class);
     }
 
+    public function entregasDistintivo(): HasMany
+    {
+        return $this->hasMany(EntregaDistintivo::class);
+    }
+
     /**
      * Se apagar, os itens novos vinculados a esta especialidade (e
-     * progresso/equivalências ligados a eles), além das equivalências de
-     * especialidade vinculadas, seriam apagados em cascata.
+     * progresso/equivalências ligados a eles), as equivalências de
+     * especialidade vinculadas, além do controle de compra/entrega física
+     * do distintivo, seriam apagados em cascata.
      */
     public function possuiItensComDadosVinculados(): bool
     {
         return $this->itensNovos->contains(fn (ItemNovo $item) => $item->possuiDadosVinculados())
-            || $this->equivalenciasEspecialidade()->exists();
+            || $this->equivalenciasEspecialidade()->exists()
+            || $this->entregasDistintivo()->exists();
     }
 
     /**

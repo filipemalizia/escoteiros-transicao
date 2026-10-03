@@ -161,6 +161,10 @@
                                 $statusBloco = $this->statusBloco($bloco);
                                 $itensVisiveisBloco = $this->itensVisiveisDoBloco($bloco);
                                 $avaliacoesPendentesBloco = $itensVisiveisBloco->filter(fn ($item) => $aguardandoAvaliacao($progressoNovoMap[$item->id] ?? null))->count();
+                                $itensPersonalizados = $this->getItensPersonalizadosDoBloco($bloco);
+                                $querendoFazer = fn ($registro) => $registro && $registro->marcado_para_fazer && ! $registro->concluido;
+                                $queroFazerBloco = $itensVisiveisBloco->contains(fn ($item) => $querendoFazer($progressoNovoMap[$item->id] ?? null))
+                                    || $itensPersonalizados->contains(fn ($item) => $querendoFazer($progressoPersonalizadoMap[$item->id] ?? null));
                             @endphp
                             <x-progresso.accordion
                                 :id="'bloco-'.$bloco->id"
@@ -170,6 +174,7 @@
                                 :status-color="$corStatus($statusBloco['status'])"
                                 :pendencia="$detalhesPendenciaNovo[$bloco->id]['detalhe'] ?? null"
                                 :avaliacoes-pendentes="$avaliacoesPendentesBloco"
+                                :quero-fazer="$queroFazerBloco"
                             >
                                 @if ($statusBloco['status'] === 'Concluído')
                                     <x-slot:acoes>
@@ -231,7 +236,6 @@
                                     </div>
                                 @endif
 
-                                @php $itensPersonalizados = $this->getItensPersonalizadosDoBloco($bloco); @endphp
                                 @if ($itensPersonalizados->isNotEmpty())
                                     <div class="mt-3 rounded-lg bg-gray-50 p-3 dark:bg-white/5">
                                         <div class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
@@ -243,17 +247,23 @@
                                                     $registroPersonalizado = $progressoPersonalizadoMap[$itemPersonalizado->id] ?? null;
                                                     $marcadoDiretoPersonalizado = (bool) ($registroPersonalizado?->concluido);
                                                     $solicitadoPersonalizado = (bool) ($registroPersonalizado?->solicitado_pelo_jovem);
+                                                    // Se o jovem já enviou isso pra avaliação, o checkbox não marca
+                                                    // direto — abre o fluxo de Avaliação certo (mesmo botão de
+                                                    // baixo), pra evitar que o chefe marque sem querer sem ver a
+                                                    // observação do jovem antes.
+                                                    $acaoCheckboxPersonalizado = $solicitadoPersonalizado ? "abrirAvaliacao('personalizado', {$itemPersonalizado->id})" : "toggleItemPersonalizado({$itemPersonalizado->id})";
                                                 @endphp
                                                 <li wire:key="item-personalizado-{{ $itemPersonalizado->id }}-{{ $marcadoDiretoPersonalizado ? 1 : 0 }}" class="flex flex-wrap items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10">
                                                     <label class="-mx-3 flex flex-1 cursor-pointer items-start gap-3 px-3">
                                                         <input
                                                             type="checkbox"
-                                                            wire:click="toggleItemPersonalizado({{ $itemPersonalizado->id }})"
+                                                            wire:click="{{ $acaoCheckboxPersonalizado }}"
                                                             @checked($marcadoDiretoPersonalizado)
                                                             class="mt-0.5 h-6 w-6 shrink-0 rounded border-gray-300 accent-primary-600 focus:ring-2 focus:ring-primary-600 focus:ring-offset-1 dark:border-gray-600 dark:focus:ring-offset-gray-900"
                                                         />
                                                         <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
                                                             <x-filament::badge color="warning" size="sm">Personalizado</x-filament::badge>
+                                                            <x-progresso.indicador-quero-fazer :marcado="! $marcadoDiretoPersonalizado && (bool) ($registroPersonalizado?->marcado_para_fazer)" />
                                                             <span>{{ $itemPersonalizado->descricao }}</span>
                                                             @if ($solicitadoPersonalizado && ! $marcadoDiretoPersonalizado)
                                                                 <x-filament::badge color="warning" size="sm">
@@ -266,9 +276,10 @@
                                                                     @if ($registroPersonalizado->registradoPor)
                                                                         por {{ $registroPersonalizado->registradoPor->name }}
                                                                     @endif
+                                                                    <x-progresso.botao-editar-data wire-click="abrirEdicaoData('personalizado', {{ $itemPersonalizado->id }}, '{{ $registroPersonalizado->data_conclusao->toDateString() }}')" />
                                                                 </span>
                                                             @endif
-                                                            @if ($solicitadoPersonalizado && $registroPersonalizado?->observacao_jovem)
+                                                            @if ($registroPersonalizado?->observacao_jovem)
                                                                 <span class="block w-full text-xs italic text-gray-500 dark:text-gray-400">
                                                                     "{{ $registroPersonalizado->observacao_jovem }}"
                                                                 </span>
@@ -343,12 +354,13 @@
                     <x-filament::input
                         type="search"
                         wire:model.live.debounce.300ms="buscaEspecialidades"
-                        placeholder="Buscar Especialidade por nome..."
+                        placeholder="Buscar Especialidade por nome, requisito ou item equivalente..."
                     />
                 </x-filament::input.wrapper>
 
                 @include('filament.resources.jovens.pages.partials.especialidades-lista', [
                     'especialidades' => $especialidadesFiltradas,
+                    'busca' => $buscaEspecialidades,
                     'mensagemVazio' => filled($buscaEspecialidades)
                         ? 'Nenhuma Especialidade encontrada para essa busca.'
                         : 'Nenhuma Especialidade cadastrada para o ramo deste jovem.',
@@ -368,12 +380,13 @@
                     <x-filament::input
                         type="search"
                         wire:model.live.debounce.300ms="buscaInsignias"
-                        placeholder="Buscar Insígnia por nome..."
+                        placeholder="Buscar Insígnia por nome, requisito ou item equivalente..."
                     />
                 </x-filament::input.wrapper>
 
                 @include('filament.resources.jovens.pages.partials.especialidades-lista', [
                     'especialidades' => $insigniasFiltradas,
+                    'busca' => $buscaInsignias,
                     'mensagemVazio' => filled($buscaInsignias)
                         ? 'Nenhuma Insígnia encontrada para essa busca.'
                         : 'Nenhuma Insígnia cadastrada para o ramo deste jovem.',
@@ -469,6 +482,7 @@
                                                             @if ($registro->registradoPor)
                                                                 por {{ $registro->registradoPor->name }}
                                                             @endif
+                                                            <x-progresso.botao-editar-data wire-click="abrirEdicaoData('antigo', {{ $item->id }}, '{{ $registro->data_conclusao->toDateString() }}')" />
                                                         </span>
                                                     @endif
                                                 </span>
@@ -588,6 +602,139 @@
             </div>
         </div>
     @endif
+
+    <x-progresso.modal
+        :show="$buscaGeralAberta"
+        heading="Buscar em tudo"
+        wire-close-action="fecharBuscaGeral"
+        size="sm:max-w-lg"
+    >
+        <input
+            type="search"
+            wire:model.live.debounce.300ms="buscaGeralTermo"
+            autofocus
+            placeholder="Buscar especialidade, insígnia ou item de progressão..."
+            class="w-full rounded-lg border-gray-300 text-sm placeholder:text-gray-400 focus:border-gray-500 focus:ring-gray-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+        />
+
+        @if (filled($buscaGeralTermo))
+            @php
+                $especialidadesDaBuscaGeral = $this->especialidadesDaBuscaGeral($buscaGeralTermo);
+                $itensDeProgressaoDaBuscaGeral = $this->itensDeProgressaoDaBuscaGeral($buscaGeralTermo);
+            @endphp
+
+            @if ($especialidadesDaBuscaGeral->isEmpty() && $itensDeProgressaoDaBuscaGeral->isEmpty())
+                <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">Nada encontrado.</p>
+            @endif
+
+            @if ($especialidadesDaBuscaGeral->isNotEmpty())
+                <div class="mt-4">
+                    <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                        Especialidades e Insígnias
+                    </div>
+                    <ul class="space-y-2">
+                        @foreach ($especialidadesDaBuscaGeral as $especialidadeEncontrada)
+                            <li>
+                                <button
+                                    type="button"
+                                    wire:click="abrirResultadoEspecialidadeDaBuscaGeral('{{ $especialidadeEncontrada->tipo }}', @js($buscaGeralTermo))"
+                                    class="flex w-full flex-wrap items-start gap-2 rounded-xl border border-gray-200 p-3 text-left text-sm hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5"
+                                >
+                                    <x-filament::badge :color="$especialidadeEncontrada->tipo === 'Insígnia' ? 'info' : 'gray'">
+                                        {{ $especialidadeEncontrada->tipo }}
+                                    </x-filament::badge>
+                                    <span class="min-w-0 flex-1"><x-progresso.destaque :texto="$especialidadeEncontrada->nome" :busca="$buscaGeralTermo" /></span>
+                                </button>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if ($itensDeProgressaoDaBuscaGeral->isNotEmpty())
+                <div class="mt-4">
+                    <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                        Itens de Progressão
+                    </div>
+                    <ul class="space-y-2">
+                        @foreach ($itensDeProgressaoDaBuscaGeral as $itemNovoEncontrado)
+                            @php $concluidoNaBuscaGeral = $this->itemNovoConcluido($itemNovoEncontrado); @endphp
+                            <li class="rounded-xl border border-gray-200 p-3 text-sm dark:border-white/10">
+                                <div class="flex flex-wrap items-start gap-2">
+                                    <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ $itemNovoEncontrado->codigo }}</span>
+                                    <x-filament::badge
+                                        :color="match ($itemNovoEncontrado->tipo_acao) {
+                                            'Obrigatória' => 'danger',
+                                            'Variável' => 'warning',
+                                            'Substitutiva' => 'info',
+                                            default => 'gray',
+                                        }"
+                                    >
+                                        {{ $itemNovoEncontrado->tipo_acao }}
+                                    </x-filament::badge>
+                                    @if ($concluidoNaBuscaGeral)
+                                        <x-filament::badge color="success">Concluído</x-filament::badge>
+                                    @endif
+                                    <span class="min-w-0 flex-1"><x-progresso.destaque :texto="$itemNovoEncontrado->descricao" :busca="$buscaGeralTermo" /></span>
+                                    <span class="block w-full text-xs text-gray-400 dark:text-gray-500">
+                                        {{ $itemNovoEncontrado->bloco->eixo->nome }} — {{ $itemNovoEncontrado->bloco->titulo }}
+                                    </span>
+                                </div>
+                                <div class="mt-2 flex flex-wrap gap-2">
+                                    @if (! $concluidoNaBuscaGeral)
+                                        <button
+                                            type="button"
+                                            wire:click="marcarConcluidoDaBuscaGeral({{ $itemNovoEncontrado->id }})"
+                                            class="rounded-lg bg-success-600 px-2 py-1 text-xs font-medium text-white hover:bg-success-500"
+                                        >
+                                            Marcar como concluído
+                                        </button>
+                                    @endif
+                                    <button
+                                        type="button"
+                                        wire:click="abrirBlocoDaBuscaGeral({{ $itemNovoEncontrado->bloco_id }})"
+                                        class="rounded-lg border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5"
+                                    >
+                                        Abrir bloco
+                                    </button>
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+        @endif
+    </x-progresso.modal>
+
+    <x-progresso.modal
+        :show="(bool) $editandoDataTipo"
+        heading="Editar data de conclusão"
+        wire-close-action="fecharEdicaoData"
+        size="sm:max-w-sm"
+    >
+        <input
+            type="date"
+            wire:model="editandoDataValor"
+            class="w-full rounded-lg border-gray-300 text-sm focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+        />
+
+        <div class="mt-4 flex justify-end gap-2">
+            <button
+                type="button"
+                wire:click="fecharEdicaoData"
+                class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5"
+            >
+                Cancelar
+            </button>
+            <button
+                type="button"
+                wire:click="salvarEdicaoData"
+                class="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-500"
+            >
+                Salvar
+            </button>
+        </div>
+    </x-progresso.modal>
 
     <x-progresso.modal-compartilhar />
 </x-filament-panels::page>
