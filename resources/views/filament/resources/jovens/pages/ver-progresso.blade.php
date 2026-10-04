@@ -93,6 +93,22 @@
         </x-filament::tabs.item>
     </x-filament::tabs>
 
+    <div class="mt-4 inline-flex gap-1 rounded-lg border border-gray-300 p-0.5 dark:border-gray-600">
+        @foreach (['todos' => 'Todos', 'pendente' => 'Pendentes', 'concluido' => 'Concluídos'] as $valorFiltroStatus => $rotuloFiltroStatus)
+            <button
+                type="button"
+                wire:click="$set('filtroStatusItens', '{{ $valorFiltroStatus }}')"
+                @class([
+                    'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                    'bg-primary-600 text-white' => $filtroStatusItens === $valorFiltroStatus,
+                    'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10' => $filtroStatusItens !== $valorFiltroStatus,
+                ])
+            >
+                {{ $rotuloFiltroStatus }}
+            </button>
+        @endforeach
+    </div>
+
     @if ($abaAtiva === 'novo')
         <div class="mt-6 space-y-6">
             @if ($avaliacoesPendentesNovoTotal > 0)
@@ -194,6 +210,7 @@
 
                                 <ul class="space-y-2">
                                     @foreach ($itensPrincipaisBloco as $item)
+                                        @continue(! $this->itemPassaFiltroStatus($this->itemNovoConcluido($item)))
                                         <x-progresso.item-novo-linha-admin
                                             :item="$item"
                                             :registro="$progressoNovoMap[$item->id] ?? null"
@@ -215,7 +232,7 @@
                                                     $itemAntigoVinculado = $equivalenciaBloco->itemAntigo;
                                                     $concluidoViaBloco = $itemAntigoVinculado && $this->itemAntigoConcluido($itemAntigoVinculado);
                                                 @endphp
-                                                @if ($itemAntigoVinculado)
+                                                @if ($itemAntigoVinculado && $this->itemPassaFiltroStatus($concluidoViaBloco))
                                                     <li wire:key="equivalencia-bloco-{{ $equivalenciaBloco->id }}-{{ $concluidoViaBloco ? 1 : 0 }}">
                                                         <label class="-mx-3 flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10">
                                                             <input
@@ -253,6 +270,7 @@
                                                     // observação do jovem antes.
                                                     $acaoCheckboxPersonalizado = $solicitadoPersonalizado ? "abrirAvaliacao('personalizado', {$itemPersonalizado->id})" : "toggleItemPersonalizado({$itemPersonalizado->id})";
                                                 @endphp
+                                                @continue(! $this->itemPassaFiltroStatus($marcadoDiretoPersonalizado))
                                                 <li wire:key="item-personalizado-{{ $itemPersonalizado->id }}-{{ $marcadoDiretoPersonalizado ? 1 : 0 }}" class="flex flex-wrap items-start gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-white/10">
                                                     <label class="-mx-3 flex flex-1 cursor-pointer items-start gap-3 px-3">
                                                         <input
@@ -322,6 +340,7 @@
                                 @if ($itensSubstitutivasBloco->isNotEmpty())
                                     <ul class="mt-3 space-y-2">
                                         @foreach ($itensSubstitutivasBloco as $item)
+                                            @continue(! $this->itemPassaFiltroStatus($this->itemNovoConcluido($item)))
                                             <x-progresso.item-novo-linha-admin
                                                 :item="$item"
                                                 :registro="$progressoNovoMap[$item->id] ?? null"
@@ -450,6 +469,7 @@
                                             $concluidoGeral = $this->itemAntigoConcluido($item);
                                             $solicitado = (bool) ($registro?->solicitado_pelo_jovem);
                                         @endphp
+                                        @continue(! $this->itemPassaFiltroStatus($concluidoGeral))
                                         <li wire:key="item-antigo-{{ $item->id }}-{{ $concluidoGeral ? 1 : 0 }}" class="flex flex-wrap items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-white/5">
                                             <label class="-mx-3 flex flex-1 cursor-pointer items-start gap-3 px-3">
                                                 <input

@@ -73,6 +73,7 @@
                                 // observação do jovem antes.
                                 $acaoCheckboxEspecialidade = $solicitadoEspecialidade ? "abrirAvaliacao('especialidade', {$item->id})" : "toggleEspecialidade({$item->id})";
                             @endphp
+                            @continue(! $this->itemPassaFiltroStatus($concluidoEspecialidade))
                             <li wire:key="item-especialidade-{{ $item->id }}-{{ $concluidoEspecialidade ? 1 : 0 }}" class="flex flex-wrap items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-white/5">
                                 <label class="-mx-3 flex flex-1 cursor-pointer items-start gap-3 px-3">
                                     <input
