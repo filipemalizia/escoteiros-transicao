@@ -51,9 +51,15 @@ it('nega acesso a um jovem de outra equipe', function () {
         ->and($lider->can('update', $this->jovemDaEquipeA))->toBeFalse();
 });
 
-it('nega acesso de um usuario comum a um jovem sem equipe atribuida', function () {
+it('permite que qualquer usuario comum veja e edite um jovem sem equipe atribuida, pra poder associa-lo a propria equipe', function () {
     $lider = User::factory()->create();
     $lider->equipes()->attach($this->equipeA);
 
-    expect($lider->can('view', $this->jovemSemEquipe))->toBeFalse();
+    expect($lider->can('view', $this->jovemSemEquipe))->toBeTrue()
+        ->and($lider->can('update', $this->jovemSemEquipe))->toBeTrue();
+
+    $outroLider = User::factory()->create();
+    $outroLider->equipes()->attach($this->equipeB);
+
+    expect($outroLider->can('view', $this->jovemSemEquipe))->toBeTrue();
 });

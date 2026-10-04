@@ -82,7 +82,13 @@ class EntregaDistintivos extends Page
         $jovens = Jovem::query()
             ->when(
                 ! auth()->user()?->isAdmin(),
-                fn ($query) => $query->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                // Jovem sem equipe fica visível pra qualquer chefe — ver
+                // {@see \App\Policies\JovemPolicy::podeGerenciar()}.
+                fn ($query) => $query->where(
+                    fn ($query) => $query
+                        ->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                        ->orWhereNull('equipe_id')
+                )
             )
             ->with('ramoAtual')
             ->orderBy('nome')

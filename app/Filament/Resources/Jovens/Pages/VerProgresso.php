@@ -46,6 +46,14 @@ class VerProgresso extends Page
 
     public string $buscaInsignias = '';
 
+    /**
+     * 'todos'|'pendente'|'concluido' — filtro por status aplicado aos itens
+     * de todas as abas (Novo, Especialidades, Insígnias e Antigo) ao mesmo
+     * tempo, pra o chefe conseguir ver só o que falta (ou só o que já foi
+     * feito) sem precisar rolar a tela toda — ver {@see itemPassaFiltroStatus()}.
+     */
+    public string $filtroStatusItens = 'todos';
+
     public bool $buscaGeralAberta = false;
 
     public string $buscaGeralTermo = '';
@@ -227,6 +235,19 @@ class VerProgresso extends Page
                 )
             )
             ->values();
+    }
+
+    /**
+     * Usado por todas as linhas de item de todas as abas pra decidir se o
+     * item deve aparecer, de acordo com {@see $filtroStatusItens}.
+     */
+    public function itemPassaFiltroStatus(bool $concluido): bool
+    {
+        return match ($this->filtroStatusItens) {
+            'pendente' => ! $concluido,
+            'concluido' => $concluido,
+            default => true,
+        };
     }
 
     /**
@@ -735,7 +756,13 @@ class VerProgresso extends Page
             ->where('id', '!=', $this->getRecord()->id)
             ->when(
                 ! auth()->user()?->isAdmin(),
-                fn ($query) => $query->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                // Jovem sem equipe fica visível pra qualquer chefe — ver
+                // {@see \App\Policies\JovemPolicy::podeGerenciar()}.
+                fn ($query) => $query->where(
+                    fn ($query) => $query
+                        ->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                        ->orWhereNull('equipe_id')
+                )
             )
             ->orderBy('nome')
             ->get();

@@ -113,7 +113,13 @@ class CriarItemPersonalizado extends Page
             ->where('ramo_atual_id', $ramoId)
             ->when(
                 ! auth()->user()?->isAdmin(),
-                fn ($query) => $query->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                // Jovem sem equipe fica visível pra qualquer chefe — ver
+                // {@see \App\Policies\JovemPolicy::podeGerenciar()}.
+                fn ($query) => $query->where(
+                    fn ($query) => $query
+                        ->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                        ->orWhereNull('equipe_id')
+                )
             )
             ->orderBy('nome')
             ->pluck('nome', 'id')

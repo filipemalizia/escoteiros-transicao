@@ -35,7 +35,13 @@ class JovemResource extends Resource
         $query = parent::getEloquentQuery();
 
         if (! auth()->user()?->isAdmin()) {
-            $query->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? []);
+            // Jovem sem equipe fica visível pra qualquer chefe — ver
+            // {@see \App\Policies\JovemPolicy::podeGerenciar()}.
+            $query->where(
+                fn (Builder $query) => $query
+                    ->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                    ->orWhereNull('equipe_id')
+            );
         }
 
         return $query;
