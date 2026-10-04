@@ -65,8 +65,10 @@ class JovemPolicy
 
     /**
      * Um admin pode gerenciar qualquer jovem. Um usuário comum só pode
-     * gerenciar jovens da(s) equipe(s) a que está vinculado — um jovem
-     * sem equipe atribuída fica visível só para admins.
+     * gerenciar jovens da(s) equipe(s) a que está vinculado — exceto um
+     * jovem ainda sem equipe, que fica visível pra qualquer chefe, pra que
+     * algum deles possa associá-lo à própria equipe (ex.: jovem recém
+     * importado por planilha, antes de ser distribuído).
      */
     private function podeGerenciar(User $user, Jovem $jovem): bool
     {
@@ -75,7 +77,7 @@ class JovemPolicy
         }
 
         if ($jovem->equipe_id === null) {
-            return false;
+            return true;
         }
 
         return $user->equipes()->whereKey($jovem->equipe_id)->exists();

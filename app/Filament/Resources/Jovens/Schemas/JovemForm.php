@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Jovens\Schemas;
 
+use App\Models\Equipe;
 use App\Models\Ramo;
 use App\Services\EtapaProgressaoService;
+use Closure;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -42,17 +44,29 @@ class JovemForm
                     ->relationship(
                         name: 'equipe',
                         titleAttribute: 'nome',
-                        modifyQueryUsing: function (Builder $query, Get $get) {
-                            $query->where('ramo_id', $get('ramo_atual_id'));
-
-                            if (! auth()->user()?->isAdmin()) {
-                                $query->whereIn('id', auth()->user()?->equipes()->pluck('equipes.id') ?? []);
-                            }
-
-                            return $query;
-                        },
+                        modifyQueryUsing: fn (Builder $query, Get $get) => static::equipesPermitidas($query, $get('ramo_atual_id')),
                     )
                     ->visible(fn (Get $get) => filled($get('ramo_atual_id')))
+                    // O filtro acima só restringe as opções exibidas no
+                    // dropdown — o Filament não revalida isso ao salvar um
+                    // Select de relationship (`Select::saveStateToRelationship()`
+                    // simplesmente associa o valor recebido), então uma
+                    // requisição adulterada poderia setar qualquer equipe_id
+                    // do sistema. Esta regra fecha essa brecha, reaplicando a
+                    // mesma restrição no servidor.
+                    ->rule(fn (Get $get) => function (string $attribute, $value, Closure $fail) use ($get) {
+                        if (blank($value)) {
+                            return;
+                        }
+
+                        $permitido = static::equipesPermitidas(Equipe::query(), $get('ramo_atual_id'))
+                            ->whereKey($value)
+                            ->exists();
+
+                        if (! $permitido) {
+                            $fail('Você não tem permissão pra atribuir essa equipe.');
+                        }
+                    })
                     ->nullable(),
 
                 Section::make('Requisitos Complementares')
@@ -61,6 +75,23 @@ class JovemForm
                     ->schema(fn (Get $get) => static::secoesRequisitos($get('ramo_atual_id')))
                     ->columnSpanFull(),
             ]);
+    }
+
+    /**
+     * Equipes do ramo informado que o usuário logado pode atribuir a um
+     * jovem — admin vê todas, chefe comum só as próprias. Usada tanto pra
+     * montar as opções do Select quanto pra revalidar no servidor o que foi
+     * de fato submetido (ver o `->rule()` do campo `equipe_id` acima).
+     */
+    protected static function equipesPermitidas(Builder $query, ?int $ramoId): Builder
+    {
+        $query->where('ramo_id', $ramoId);
+
+        if (! auth()->user()?->isAdmin()) {
+            $query->whereIn('id', auth()->user()?->equipes()->pluck('equipes.id') ?? []);
+        }
+
+        return $query;
     }
 
     /**

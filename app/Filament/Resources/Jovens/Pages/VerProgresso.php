@@ -756,7 +756,13 @@ class VerProgresso extends Page
             ->where('id', '!=', $this->getRecord()->id)
             ->when(
                 ! auth()->user()?->isAdmin(),
-                fn ($query) => $query->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                // Jovem sem equipe fica visível pra qualquer chefe — ver
+                // {@see \App\Policies\JovemPolicy::podeGerenciar()}.
+                fn ($query) => $query->where(
+                    fn ($query) => $query
+                        ->whereIn('equipe_id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+                        ->orWhereNull('equipe_id')
+                )
             )
             ->orderBy('nome')
             ->get();

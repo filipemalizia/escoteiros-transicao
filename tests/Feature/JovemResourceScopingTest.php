@@ -59,3 +59,21 @@ it('exclui jovens de outras equipes diretamente na query do resource', function 
     expect($ids)->toContain($this->jovemDaEquipeA->id)
         ->and($ids)->not->toContain($this->jovemDaEquipeB->id);
 });
+
+it('mostra jovens sem equipe pra qualquer usuario comum, pra poderem ser associados', function () {
+    $jovemSemEquipe = Jovem::create([
+        'nome' => 'Jovem sem Equipe',
+        'data_nascimento' => '2010-01-01',
+        'ramo_atual_id' => $this->equipeA->ramo_id,
+    ]);
+
+    $lider = User::factory()->create();
+    $lider->equipes()->attach($this->equipeB);
+    $this->actingAs($lider);
+
+    Livewire::test(ListJovens::class)
+        ->assertCanSeeTableRecords([$jovemSemEquipe])
+        ->assertCanNotSeeTableRecords([$this->jovemDaEquipeA]);
+
+    expect(JovemResource::getEloquentQuery()->pluck('id'))->toContain($jovemSemEquipe->id);
+});
