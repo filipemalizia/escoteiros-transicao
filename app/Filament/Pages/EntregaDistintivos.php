@@ -113,6 +113,7 @@ class EntregaDistintivos extends Page
         // é relida a cada render: 1 query leve, igual às entregas.
         $promessas = Jovem::query()
             ->whereIn('id', $jovemIds)
+            ->with(['ramoAtual:id,nome', 'promessaRamo:id,nome'])
             ->get(['id', 'ramo_atual_id', 'data_promessa', 'promessa_ramo_id'])
             ->keyBy('id');
 

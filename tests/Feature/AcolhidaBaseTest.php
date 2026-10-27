@@ -56,20 +56,42 @@ it('o progresso da acolhida e separado por ramo', function () {
     expect($this->service->resumo($this->jovem->fresh())['concluidos'])->toBe(0);
 });
 
-it('a promessa vale so para o ramo em que foi registrada', function () {
+it('a Promessa Escoteira vale para Escoteiro, Senior e Pioneiro, mas a acolhida recomeca em cada ramo', function () {
     expect($this->jovem->promessaRealizada())->toBeFalse();
 
     $this->jovem->update(['data_promessa' => '2026-05-10']);
     expect($this->jovem->fresh()->promessaRealizada())->toBeTrue()
         ->and($this->jovem->fresh()->promessa_ramo_id)->toBe($this->ramo->id);
 
-    $this->jovem->update(['ramo_atual_id' => Ramo::create(['nome' => 'Sênior'])->id]);
-    expect($this->jovem->fresh()->promessaRealizada())->toBeFalse();
+    ProgressoAcolhida::create(['jovem_id' => $this->jovem->id, 'ramo_id' => $this->ramo->id, 'ordem' => 1, 'concluido' => true]);
 
-    $this->jovem->update(['data_promessa' => '2026-09-01']);
-    expect($this->jovem->fresh()->promessaRealizada())->toBeTrue();
+    foreach (['Sênior', 'Pioneiro'] as $nomeRamo) {
+        $this->jovem->update(['ramo_atual_id' => Ramo::create(['nome' => $nomeRamo])->id]);
+
+        expect($this->jovem->fresh()->promessaRealizada())->toBeTrue()
+            ->and($this->service->resumo($this->jovem->fresh())['concluidos'])->toBe(0);
+    }
+});
+
+it('a Promessa do Lobinho vale so para o Lobinho', function () {
+    $lobinho = Ramo::create(['nome' => 'Lobinho']);
+    $this->jovem->update(['ramo_atual_id' => $lobinho->id, 'data_promessa' => '2025-06-01']);
+
+    expect($this->jovem->fresh()->promessaRealizada())->toBeTrue()
+        ->and($this->jovem->fresh()->nomeDaPromessaDoRamo())->toBe('Lobinho');
+
+    $this->jovem->update(['ramo_atual_id' => $this->ramo->id]);
+
+    expect($this->jovem->fresh()->promessaRealizada())->toBeFalse()
+        ->and($this->jovem->fresh()->nomeDaPromessaDoRamo())->toBe('Escoteira');
+
+    $this->jovem->update(['data_promessa' => '2026-03-15']);
+
+    expect($this->jovem->fresh()->promessaRealizada())->toBeTrue()
+        ->and($this->jovem->fresh()->promessa_ramo_id)->toBe($this->ramo->id);
 
     $this->jovem->update(['data_promessa' => null]);
+
     expect($this->jovem->fresh()->promessaRealizada())->toBeFalse()
         ->and($this->jovem->fresh()->promessa_ramo_id)->toBeNull();
 });

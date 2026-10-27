@@ -72,7 +72,7 @@ class JovemForm
                 DatePicker::make('data_promessa')
                     ->label('Data da Promessa')
                     ->maxDate(now())
-                    ->helperText('Os distintivos só são entregues depois da Promessa. Vale para o ramo atual: se o jovem mudar de ramo, registre a nova.'),
+                    ->helperText('Os distintivos só são entregues depois da Promessa. A Promessa do Lobinho vale só para o Lobinho; a Promessa Escoteira vale para Escoteiro, Sênior e Pioneiro. Ao sair do Lobinho, registre a nova.'),
 
                 Section::make('Requisitos Complementares')
                     ->description('Requisitos que não vêm do checklist de Itens (contadores, insígnias, recomendações).')

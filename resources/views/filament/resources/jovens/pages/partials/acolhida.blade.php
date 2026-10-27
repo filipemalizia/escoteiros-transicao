@@ -6,6 +6,7 @@
     $resumoAcolhida = $acolhida['resumo'];
     $promessaRealizada = $jovemDaAcolhida->promessaRealizada();
     $promessaDeOutroRamo = $jovemDaAcolhida->data_promessa !== null && ! $promessaRealizada;
+    $nomeDaPromessa = $jovemDaAcolhida->nomeDaPromessaDoRamo();
     $aguardandoAcolhida = $acolhida['progresso']->filter(fn ($registro) => $registro->solicitado_pelo_jovem && ! $registro->concluido)->count();
 @endphp
 
@@ -79,10 +80,10 @@
         </ul>
 
         <div class="mt-4 border-t border-gray-100 pt-4 dark:border-white/10">
-            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Data da Promessa</label>
+            <label class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">Data da Promessa {{ $nomeDaPromessa }}</label>
             @if ($promessaDeOutroRamo)
                 <p class="mb-2 text-xs text-amber-600 dark:text-amber-400">
-                    A Promessa registrada ({{ $jovemDaAcolhida->data_promessa->format('d/m/Y') }}) foi feita em outro ramo. Registre a Promessa deste ramo.
+                    A Promessa registrada ({{ $jovemDaAcolhida->data_promessa->format('d/m/Y') }}), feita no Ramo {{ $jovemDaAcolhida->promessaRamo?->nome }}, não vale para este ramo. Registre a Promessa {{ $nomeDaPromessa }}.
                 </p>
             @endif
             <div class="flex flex-wrap items-center gap-2">

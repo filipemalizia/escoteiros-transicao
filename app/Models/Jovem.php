@@ -36,8 +36,8 @@ class Jovem extends Model
                 $jovem->ramo_atual_id = Equipe::find($jovem->equipe_id)?->ramo_id ?? $jovem->ramo_atual_id;
             }
 
-            // A Promessa vale pro ramo em que foi registrada: se o jovem
-            // sobe de ramo, ela deixa de contar até ser registrada de novo.
+            // Guarda o ramo em que a Promessa foi registrada: ele decide se ela
+            // ainda vale depois que o jovem muda de ramo (ver promessaRealizada()).
             if ($jovem->isDirty('data_promessa')) {
                 $jovem->promessa_ramo_id = $jovem->data_promessa ? $jovem->ramo_atual_id : null;
             }
@@ -133,14 +133,49 @@ class Jovem extends Model
         return $this->hasMany(ProgressoAcolhida::class);
     }
 
+    public function promessaRamo(): BelongsTo
+    {
+        return $this->belongsTo(Ramo::class, 'promessa_ramo_id');
+    }
+
     /**
-     * Fez a Promessa no ramo em que está agora. Só depois dela os
-     * distintivos podem ser entregues (a compra pode ser adiantada).
+     * A Promessa do Lobinho vale só pro Lobinho; a Promessa Escoteira vale
+     * pros ramos Escoteiro, Sênior e Pioneiro (e adultos voluntários).
+     * Ramo fora dessas regras conta como grupo próprio.
+     */
+    public static function grupoDePromessa(?string $ramoNome): ?string
+    {
+        return match ($ramoNome) {
+            'Lobinho' => 'Lobinho',
+            'Escoteiro', 'Sênior', 'Pioneiro' => 'Escoteira',
+            default => $ramoNome,
+        };
+    }
+
+    /**
+     * Nome da Promessa que vale pro ramo atual do jovem ("Lobinho" ou
+     * "Escoteira"), pros textos das telas.
+     */
+    public function nomeDaPromessaDoRamo(): ?string
+    {
+        return static::grupoDePromessa($this->ramoAtual?->nome);
+    }
+
+    /**
+     * Já fez a Promessa que vale pro ramo em que está agora. Só depois dela
+     * os distintivos podem ser entregues (a compra pode ser adiantada).
+     * Subir de Escoteiro pra Sênior ou Pioneiro mantém a Promessa Escoteira;
+     * sair do Lobinho exige registrar a Promessa Escoteira.
      */
     public function promessaRealizada(): bool
     {
-        return $this->data_promessa !== null
-            && (int) $this->promessa_ramo_id === (int) $this->ramo_atual_id;
+        if ($this->data_promessa === null || $this->promessa_ramo_id === null) {
+            return false;
+        }
+
+        $grupoDaPromessa = static::grupoDePromessa($this->promessaRamo?->nome);
+
+        return $grupoDaPromessa !== null && $grupoDaPromessa === $this->nomeDaPromessaDoRamo();
     }
 
     public function requisitosComplementares(): HasMany

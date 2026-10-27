@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Jovem;
 use App\Services\AcolhidaService;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -10,8 +11,9 @@ return new class extends Migration
     /**
      * Período de Acolhida: itens que o jovem cumpre antes da Promessa (a
      * lista de itens de cada ramo fica em {@see AcolhidaService}).
-     * A Promessa vale pro ramo em que foi feita (`promessa_ramo_id`): se o
-     * jovem sobe de ramo, precisa registrar a nova.
+     * A Promessa guarda o ramo em que foi feita (`promessa_ramo_id`): a do
+     * Lobinho vale só pro Lobinho, a Escoteira pros demais ramos (ver
+     * {@see Jovem::promessaRealizada()}).
      */
     public function up(): void
     {

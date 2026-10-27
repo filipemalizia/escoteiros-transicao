@@ -117,11 +117,25 @@ it('nao aceita data de Promessa no futuro nem invalida', function () {
     expect($this->jovem->fresh()->data_promessa)->toBeNull();
 });
 
-it('avisa quando a Promessa registrada foi feita em outro ramo', function () {
-    $this->jovem->update(['data_promessa' => '2026-01-10']);
-    $this->jovem->update(['ramo_atual_id' => Ramo::create(['nome' => 'Sênior'])->id]);
+it('avisa quando a Promessa do Lobinho nao vale para o ramo atual', function () {
+    $lobinho = Ramo::create(['nome' => 'Lobinho']);
+    $this->jovem->update(['ramo_atual_id' => $lobinho->id, 'data_promessa' => '2025-01-10']);
+    $this->jovem->update(['ramo_atual_id' => $this->ramo->id]);
 
-    paginaDoJovem($this->jovem->fresh())->assertSee('foi feita em outro ramo')->assertSee('Promessa pendente');
+    paginaDoJovem($this->jovem->fresh())
+        ->assertSee('feita no Ramo Lobinho, não vale para este ramo')
+        ->assertSee('Registre a Promessa Escoteira')
+        ->assertSee('Promessa pendente');
+});
+
+it('a Promessa Escoteira feita em outro ramo escoteiro continua valendo e nao mostra aviso', function () {
+    $escoteiro = Ramo::create(['nome' => 'Escoteiro']);
+    $this->jovem->update(['ramo_atual_id' => $escoteiro->id, 'data_promessa' => '2025-01-10']);
+    $this->jovem->update(['ramo_atual_id' => $this->ramo->id]);
+
+    paginaDoJovem($this->jovem->fresh())
+        ->assertSee('Promessa em 10/01/2025')
+        ->assertDontSee('não vale para este ramo');
 });
 
 it('a acolhida nao bloqueia a marcacao de progresso de quem ainda nao fez a Promessa', function () {

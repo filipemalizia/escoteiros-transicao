@@ -366,16 +366,24 @@ describe('Promessa pendente', function () {
         expect(EntregaDistintivo::first()->entregue_em->isToday())->toBeTrue();
     });
 
-    it('a Promessa de outro ramo nao libera a entrega no ramo novo', function () {
+    it('a Promessa Escoteira continua valendo quando o jovem sobe de Senior para Pioneiro', function () {
         $this->jovem->update(['data_promessa' => '2026-03-01']);
         $this->jovem->update(['ramo_atual_id' => Ramo::create(['nome' => 'Pioneiro'])->id]);
 
-        Livewire::test(EntregaDistintivos::class)->assertSet('editandoSemPromessa', false);
+        expect($this->jovem->fresh()->promessaRealizada())->toBeTrue();
+
+        Livewire::test(EntregaDistintivos::class)->assertDontSee('Promessa pendente');
+    });
+
+    it('a Promessa do Lobinho nao libera a entrega no ramo Escoteiro', function () {
+        $lobinho = Ramo::create(['nome' => 'Lobinho']);
+        $this->jovem->update(['ramo_atual_id' => $lobinho->id, 'data_promessa' => '2026-03-01']);
+        $this->jovem->update(['ramo_atual_id' => Ramo::create(['nome' => 'Escoteiro'])->id]);
 
         expect($this->jovem->fresh()->promessaRealizada())->toBeFalse();
 
         Livewire::test(EntregaDistintivos::class)
-            ->call('marcarEntregueHoje', 'etapa', $this->jovem->id, 'Descoberta');
+            ->call('marcarEntregueHoje', 'etapa', $this->jovem->id, 'Pistas');
 
         expect(EntregaEtapa::count())->toBe(0);
     });
