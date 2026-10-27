@@ -13,6 +13,7 @@
         'novo' => $avaliandoItemId ? ($progressoNovoMap[$avaliandoItemId] ?? null) : null,
         'personalizado' => $avaliandoItemId ? ($progressoPersonalizadoMap[$avaliandoItemId] ?? null) : null,
         'especialidade' => $avaliandoItemId ? ($progressoEspecialidadeMap[$avaliandoItemId] ?? null) : null,
+        'acolhida' => $itemParaAvaliar instanceof \App\Models\ProgressoAcolhida ? $itemParaAvaliar : null,
         default => null,
     };
     $percentualAntigo = $this->getPercentualAntigo();
@@ -54,6 +55,8 @@
             </div>
         </x-filament::section>
     </div>
+
+    @include('filament.resources.jovens.pages.partials.acolhida', ['acolhida' => $this->getAcolhida()])
 
     <x-filament::tabs label="Programa" class="mt-8">
         <x-filament::tabs.item

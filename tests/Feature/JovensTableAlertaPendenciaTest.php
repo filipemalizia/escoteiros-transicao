@@ -10,6 +10,7 @@ use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoAcolhida;
 use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
@@ -142,4 +143,15 @@ it('mostra na edicao do jovem um botao que leva a tela de progressao dele', func
     Livewire::test(EditJovem::class, ['record' => $jovem->getKey()])
         ->assertActionVisible('verProgresso')
         ->assertActionHasUrl('verProgresso', JovemResource::getUrl('progresso', ['record' => $jovem]));
+});
+
+it('marca o alerta de avaliacao tambem para pedido pendente da acolhida', function () {
+    $jovem = Jovem::create(['nome' => 'Pedido Acolhida', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+    ProgressoAcolhida::create(['jovem_id' => $jovem->id, 'ramo_id' => $this->ramo->id, 'ordem' => 1, 'solicitado_pelo_jovem' => true, 'solicitado_em' => now()]);
+
+    $this->actingAs($this->admin);
+
+    $registro = Livewire::test(ListJovens::class)->instance()->getTable()->getRecords()->firstWhere('id', $jovem->id);
+
+    expect((bool) $registro->tem_pendencia_acolhida)->toBeTrue();
 });

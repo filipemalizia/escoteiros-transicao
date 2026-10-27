@@ -12,10 +12,12 @@ use App\Models\EspecialidadeDistintivoItem;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoAcolhida;
 use App\Models\ProgressoAntigo;
 use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
+use App\Services\AcolhidaService;
 use App\Services\EtapaProgressaoService;
 use App\Services\Portal\SessaoJovemService;
 use App\Services\StatusProgressaoService;
@@ -82,6 +84,12 @@ class VerProgresso extends Page
      */
     public ?string $avaliandoTipo = null;
 
+    /**
+     * Data da Promessa em edição na seção de Acolhida (Y-m-d, vazio = sem
+     * Promessa) — ver {@see salvarDataPromessa()}.
+     */
+    public string $dataPromessa = '';
+
     public ?int $avaliandoItemId = null;
 
     /**
@@ -100,6 +108,8 @@ class VerProgresso extends Page
         $this->record = $this->resolveRecord($record);
 
         $this->authorizeAccess();
+
+        $this->dataPromessa = $this->getRecord()->data_promessa?->toDateString() ?? '';
     }
 
     protected function authorizeAccess(): void
@@ -743,6 +753,105 @@ class VerProgresso extends Page
         };
     }
 
+    /**
+     * Itens do Período de Acolhida do jovem, o progresso de cada um (por
+     * ordem) e o resumo "x de N" pra seção exibida acima das abas.
+     *
+     * @return array{itens: array<int, string>, progresso: \Illuminate\Support\Collection<int, ProgressoAcolhida>, resumo: array{total: int, concluidos: int, percentual: int, completo: bool}}
+     */
+    public function getAcolhida(): array
+    {
+        $jovem = $this->getRecord();
+        $service = app(AcolhidaService::class);
+
+        return [
+            'itens' => $service->itensDoRamo($jovem->ramoAtual?->nome),
+            'progresso' => $service->progressoDoJovem($jovem),
+            'resumo' => $service->resumo($jovem),
+        ];
+    }
+
+    private function progressoAcolhidaDoItem(int $ordem): ?ProgressoAcolhida
+    {
+        $jovem = $this->getRecord();
+
+        if (! isset(app(AcolhidaService::class)->itensDoRamo($jovem->ramoAtual?->nome)[$ordem])) {
+            return null;
+        }
+
+        return ProgressoAcolhida::query()->firstOrNew([
+            'jovem_id' => $jovem->id,
+            'ramo_id' => $jovem->ramo_atual_id,
+            'ordem' => $ordem,
+        ]);
+    }
+
+    public function toggleAcolhida(int $ordem): void
+    {
+        $progresso = $this->progressoAcolhidaDoItem($ordem);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $concluido = ! $progresso->concluido;
+
+        $progresso->concluido = $concluido;
+        $progresso->data_conclusao = $concluido ? Carbon::today() : null;
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+    }
+
+    public function confirmarAcolhida(int $ordem): void
+    {
+        $progresso = $this->progressoAcolhidaDoItem($ordem);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $progresso->concluido = true;
+        $progresso->data_conclusao = Carbon::today();
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        $this->fecharAvaliacao();
+    }
+
+    public function rejeitarAcolhida(int $ordem): void
+    {
+        ProgressoAcolhida::query()
+            ->where('jovem_id', $this->getRecord()->id)
+            ->where('ramo_id', $this->getRecord()->ramo_atual_id)
+            ->where('ordem', $ordem)
+            ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+
+        $this->fecharAvaliacao();
+    }
+
+    /**
+     * Registra (ou limpa, se vazia) a data da Promessa do jovem no ramo
+     * atual. Os distintivos só podem ser entregues depois dela.
+     */
+    public function salvarDataPromessa(): void
+    {
+        $this->validate(['dataPromessa' => ['nullable', 'date', 'before_or_equal:today']], [
+            'dataPromessa.date' => 'Informe uma data válida.',
+            'dataPromessa.before_or_equal' => 'A data da Promessa não pode ser no futuro.',
+        ]);
+
+        $this->getRecord()->update(['data_promessa' => blank($this->dataPromessa) ? null : $this->dataPromessa]);
+
+        Notification::make()
+            ->title(blank($this->dataPromessa) ? 'Promessa removida' : 'Promessa registrada')
+            ->success()
+            ->send();
+    }
+
     public function rejeitarEspecialidade(int $especialidadeDistintivoItemId): void
     {
         ProgressoEspecialidade::query()
@@ -770,7 +879,7 @@ class VerProgresso extends Page
      * no momento — usado pelo modal pra mostrar o texto do item sem a view
      * precisar saber o tipo.
      */
-    public function getItemParaAvaliar(): ItemNovo|ItemPersonalizado|EspecialidadeDistintivoItem|null
+    public function getItemParaAvaliar(): ItemNovo|ItemPersonalizado|EspecialidadeDistintivoItem|ProgressoAcolhida|null
     {
         if (! $this->avaliandoTipo || ! $this->avaliandoItemId) {
             return null;
@@ -780,6 +889,7 @@ class VerProgresso extends Page
             'novo' => ItemNovo::find($this->avaliandoItemId),
             'personalizado' => ItemPersonalizado::find($this->avaliandoItemId),
             'especialidade' => EspecialidadeDistintivoItem::find($this->avaliandoItemId),
+            'acolhida' => $this->progressoAcolhidaDoItem($this->avaliandoItemId),
             default => null,
         };
     }
@@ -796,6 +906,7 @@ class VerProgresso extends Page
             'novo' => $this->confirmarNovo($this->avaliandoItemId),
             'personalizado' => $this->confirmarItemPersonalizado($this->avaliandoItemId),
             'especialidade' => $this->confirmarEspecialidade($this->avaliandoItemId),
+            'acolhida' => $this->confirmarAcolhida($this->avaliandoItemId),
             default => null,
         };
     }
@@ -806,6 +917,7 @@ class VerProgresso extends Page
             'novo' => $this->rejeitarNovo($this->avaliandoItemId),
             'personalizado' => $this->rejeitarItemPersonalizado($this->avaliandoItemId),
             'especialidade' => $this->rejeitarEspecialidade($this->avaliandoItemId),
+            'acolhida' => $this->rejeitarAcolhida($this->avaliandoItemId),
             default => null,
         };
     }
@@ -828,7 +940,7 @@ class VerProgresso extends Page
      * data de conclusão pra algo ainda pendente — pra isso já existe o
      * prazo do "quero fazer").
      */
-    private function progressoParaEdicaoDeData(): ProgressoAntigo|ProgressoNovo|ProgressoPersonalizado|ProgressoEspecialidade|null
+    private function progressoParaEdicaoDeData(): ProgressoAntigo|ProgressoNovo|ProgressoPersonalizado|ProgressoEspecialidade|ProgressoAcolhida|null
     {
         $jovemId = $this->getRecord()->id;
 
@@ -837,6 +949,7 @@ class VerProgresso extends Page
             'novo' => ProgressoNovo::where('jovem_id', $jovemId)->where('item_novo_id', $this->editandoDataItemId)->first(),
             'personalizado' => ProgressoPersonalizado::where('jovem_id', $jovemId)->where('item_personalizado_id', $this->editandoDataItemId)->first(),
             'especialidade' => ProgressoEspecialidade::where('jovem_id', $jovemId)->where('especialidade_distintivo_item_id', $this->editandoDataItemId)->first(),
+            'acolhida' => ProgressoAcolhida::where('jovem_id', $jovemId)->where('ramo_id', $this->getRecord()->ramo_atual_id)->where('ordem', $this->editandoDataItemId)->first(),
             default => null,
         };
     }

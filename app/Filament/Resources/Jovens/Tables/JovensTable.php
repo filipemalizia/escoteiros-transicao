@@ -50,13 +50,14 @@ class JovensTable
                 'progressoNovo as tem_pendencia_novo' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoPersonalizado as tem_pendencia_personalizado' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoEspecialidade as tem_pendencia_especialidade' => fn (Builder $q) => self::comItemPendente($q),
+                'progressoAcolhida as tem_pendencia_acolhida' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoNovo as tem_pedido_desmarcar_novo' => fn (Builder $q) => self::comPedidoDesmarcar($q),
                 'progressoPersonalizado as tem_pedido_desmarcar_personalizado' => fn (Builder $q) => self::comPedidoDesmarcar($q),
             ]))
             ->columns([
                 IconColumn::make('pendencia_revisao')
                     ->label('')
-                    ->getStateUsing(fn (Jovem $record) => $record->tem_pendencia_antigo || $record->tem_pendencia_novo || $record->tem_pendencia_personalizado || $record->tem_pendencia_especialidade)
+                    ->getStateUsing(fn (Jovem $record) => $record->tem_pendencia_antigo || $record->tem_pendencia_novo || $record->tem_pendencia_personalizado || $record->tem_pendencia_especialidade || $record->tem_pendencia_acolhida)
                     ->icon(fn (bool $state) => $state ? Heroicon::OutlinedExclamationTriangle : null)
                     ->color('warning')
                     ->tooltip(fn (bool $state) => $state ? 'Possui itens aguardando avaliação' : null),
