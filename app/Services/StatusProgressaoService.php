@@ -811,7 +811,8 @@ class StatusProgressaoService
     {
         return ProgressoNovo::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
             + ProgressoPersonalizado::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
-            + ProgressoEspecialidade::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count();
+            + ProgressoEspecialidade::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
+            + app(AcolhidaService::class)->contagemAguardandoAvaliacao($jovem);
     }
 
     public function contagemMarcadosParaFazer(Jovem $jovem): int

@@ -753,24 +753,6 @@ class VerProgresso extends Page
         };
     }
 
-    /**
-     * Itens do Período de Acolhida do jovem, o progresso de cada um (por
-     * ordem) e o resumo "x de N" pra seção exibida acima das abas.
-     *
-     * @return array{itens: array<int, string>, progresso: \Illuminate\Support\Collection<int, ProgressoAcolhida>, resumo: array{total: int, concluidos: int, percentual: int, completo: bool}}
-     */
-    public function getAcolhida(): array
-    {
-        $jovem = $this->getRecord();
-        $service = app(AcolhidaService::class);
-
-        return [
-            'itens' => $service->itensDoRamo($jovem->ramoAtual?->nome),
-            'progresso' => $service->progressoDoJovem($jovem),
-            'resumo' => $service->resumo($jovem),
-        ];
-    }
-
     private function progressoAcolhidaDoItem(int $ordem): ?ProgressoAcolhida
     {
         $jovem = $this->getRecord();

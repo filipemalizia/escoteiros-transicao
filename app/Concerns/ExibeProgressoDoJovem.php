@@ -13,10 +13,12 @@ use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoAcolhida;
 use App\Models\ProgressoAntigo;
 use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
+use App\Services\AcolhidaService;
 use App\Services\EquivalenciaCreditoService;
 use App\Services\EtapaProgressaoService;
 use App\Services\ImagemDataUriService;
@@ -651,11 +653,51 @@ trait ExibeProgressoDoJovem
             ...$this->itensNovosAguardandoRevisao(),
             ...$this->itensPersonalizadosAguardandoRevisao(),
             ...$this->itensEspecialidadeAguardandoRevisao(),
+            ...$this->itensAcolhidaAguardandoRevisao(),
         ];
 
         usort($itens, fn (array $a, array $b) => $b['solicitado_em'] <=> $a['solicitado_em']);
 
         return $itens;
+    }
+
+    /**
+     * Itens do Período de Acolhida do jovem, o progresso de cada um (por
+     * ordem) e o resumo "x de N" pra seção exibida acima das abas.
+     *
+     * @return array{itens: array<int, string>, progresso: \Illuminate\Support\Collection<int, ProgressoAcolhida>, resumo: array{total: int, concluidos: int, percentual: int, completo: bool}}
+     */
+    public function getAcolhida(): array
+    {
+        $jovem = $this->jovem();
+        $service = app(AcolhidaService::class);
+
+        return [
+            'itens' => $service->itensDoRamo($jovem->ramoAtual?->nome),
+            'progresso' => $service->progressoDoJovem($jovem),
+            'resumo' => $service->resumo($jovem),
+        ];
+    }
+
+    /**
+     * @return array<int, array{tipo: string, texto: string, contexto: string, observacao: ?string, solicitado_em: Carbon}>
+     */
+    private function itensAcolhidaAguardandoRevisao(): array
+    {
+        $jovem = $this->jovem();
+        $textos = app(AcolhidaService::class)->itensDoRamo($jovem->ramoAtual?->nome);
+
+        return app(AcolhidaService::class)->progressoDoJovem($jovem)
+            ->filter(fn (ProgressoAcolhida $progresso) => $progresso->solicitado_pelo_jovem && ! $progresso->concluido && isset($textos[$progresso->ordem]))
+            ->map(fn (ProgressoAcolhida $progresso) => [
+                'tipo' => 'acolhida',
+                'texto' => $textos[$progresso->ordem],
+                'contexto' => 'Período de Acolhida',
+                'observacao' => $progresso->observacao_jovem,
+                'solicitado_em' => $progresso->solicitado_em,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
