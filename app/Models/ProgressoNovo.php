@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Concerns\ControlaDesmarcacaoQueroFazer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProgressoNovo extends Model
 {
+    use ControlaDesmarcacaoQueroFazer;
+
     protected $table = 'progresso_novo';
 
     protected $fillable = ['jovem_id', 'item_novo_id', 'concluido', 'data_conclusao', 'registrado_por_id', 'solicitado_pelo_jovem', 'solicitado_em', 'observacao_jovem', 'marcado_para_fazer', 'marcado_para_fazer_em', 'data_alvo'];

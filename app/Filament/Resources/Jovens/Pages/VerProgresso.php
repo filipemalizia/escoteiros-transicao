@@ -682,6 +682,53 @@ class VerProgresso extends Page
         );
     }
 
+    /**
+     * O chefe tira o "quero fazer" de um item (a pedido do jovem ou por
+     * decisão própria, depois de conversar com ele). Só Programa Novo e
+     * itens personalizados: é o que entra no cálculo do bloco do Pioneiro.
+     */
+    public function desmarcarQueroFazer(string $tipo, int $itemId): void
+    {
+        $progresso = $this->progressoQueroFazer($tipo, $itemId);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $progresso->marcado_para_fazer = false;
+        $progresso->marcado_para_fazer_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    /**
+     * O chefe mantém o item marcado: só limpa o pedido, o jovem pode pedir
+     * de novo quando quiser.
+     */
+    public function recusarPedidoDesmarcar(string $tipo, int $itemId): void
+    {
+        $progresso = $this->progressoQueroFazer($tipo, $itemId);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $progresso->desmarcar_solicitado_em = null;
+        $progresso->save();
+    }
+
+    private function progressoQueroFazer(string $tipo, int $itemId): ProgressoNovo|ProgressoPersonalizado|null
+    {
+        $jovemId = $this->getRecord()->id;
+
+        return match ($tipo) {
+            'novo' => ProgressoNovo::where('jovem_id', $jovemId)->where('item_novo_id', $itemId)->first(),
+            'personalizado' => ProgressoPersonalizado::where('jovem_id', $jovemId)->where('item_personalizado_id', $itemId)->first(),
+            default => null,
+        };
+    }
+
     public function rejeitarEspecialidade(int $especialidadeDistintivoItemId): void
     {
         ProgressoEspecialidade::query()

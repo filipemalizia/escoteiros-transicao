@@ -26,6 +26,7 @@ class EstatisticasOverview extends StatsOverviewWidget
             Stat::make('Total de Jovens', Jovem::count()),
             Stat::make('Total de Equipes', Equipe::count()),
             $this->statAvaliacoesPendentes(),
+            $this->statPedidosDesmarcar(),
         ];
 
         $ramos = Ramo::withCount('jovens')->get()->sortBy(function (Ramo $ramo) {
@@ -65,5 +66,30 @@ class EstatisticasOverview extends StatsOverviewWidget
         return Stat::make('Itens Aguardando Avaliação', $total)
             ->description($user?->isAdmin() ? 'Em todas as equipes' : 'Nas suas equipes')
             ->color($total > 0 ? 'warning' : 'success');
+    }
+
+    /**
+     * Pedidos de pioneiros pra desmarcar um "quero fazer" (depois da janela
+     * de 24h) aguardando resposta do chefe, nas mesmas equipes de
+     * {@see statAvaliacoesPendentes()}.
+     */
+    private function statPedidosDesmarcar(): Stat
+    {
+        $user = auth()->user();
+
+        $jovensQuery = Jovem::query();
+
+        if (! $user?->isAdmin()) {
+            $jovensQuery->whereIn('equipe_id', $user?->equipes()->pluck('equipes.id') ?? []);
+        }
+
+        $jovemIds = $jovensQuery->pluck('id');
+
+        $total = ProgressoNovo::query()->whereIn('jovem_id', $jovemIds)->whereNotNull('desmarcar_solicitado_em')->where('marcado_para_fazer', true)->where('concluido', false)->count()
+            + ProgressoPersonalizado::query()->whereIn('jovem_id', $jovemIds)->whereNotNull('desmarcar_solicitado_em')->where('marcado_para_fazer', true)->where('concluido', false)->count();
+
+        return Stat::make('Pedidos para Desmarcar', $total)
+            ->description("Pioneiros que querem tirar um 'quero fazer'")
+            ->color($total > 0 ? 'info' : 'success');
     }
 }

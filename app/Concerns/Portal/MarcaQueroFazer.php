@@ -11,6 +11,7 @@ use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
 use App\Services\Portal\SessaoJovemService;
+use App\Services\StatusProgressaoService;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -56,7 +57,7 @@ trait MarcaQueroFazer
             return;
         }
 
-        $this->alternarMarcacaoQueroFazer(ProgressoNovo::class, 'item_novo_id', $itemNovoId);
+        $this->alternarMarcacaoQueroFazer(ProgressoNovo::class, 'item_novo_id', $itemNovoId, exigeConfirmacaoDoChefe: true);
     }
 
     /**
@@ -78,7 +79,7 @@ trait MarcaQueroFazer
 
         abort_unless($pertenceAoJovem, 403);
 
-        $this->alternarMarcacaoQueroFazer(ProgressoPersonalizado::class, 'item_personalizado_id', $itemPersonalizadoId);
+        $this->alternarMarcacaoQueroFazer(ProgressoPersonalizado::class, 'item_personalizado_id', $itemPersonalizadoId, exigeConfirmacaoDoChefe: true);
     }
 
     /**
@@ -96,9 +97,15 @@ trait MarcaQueroFazer
     }
 
     /**
+     * Itens que contam pro bloco (Novo e Personalizado) seguem a regra do
+     * Pioneiro ({@see ControlaDesmarcacaoQueroFazer}): depois da janela de
+     * 24h, tocar na estrela de um item já marcado só envia (ou cancela) um
+     * pedido pro chefe, em vez de desmarcar. Especialidade nunca passa por
+     * isso porque não afeta o bloco nem a etapa.
+     *
      * @param  class-string<Model>  $modelClass
      */
-    private function alternarMarcacaoQueroFazer(string $modelClass, string $coluna, int $itemId): void
+    private function alternarMarcacaoQueroFazer(string $modelClass, string $coluna, int $itemId, bool $exigeConfirmacaoDoChefe = false): void
     {
         $progresso = $modelClass::query()->firstOrNew([
             'jovem_id' => $this->jovemId,
@@ -109,8 +116,18 @@ trait MarcaQueroFazer
             return;
         }
 
+        if ($exigeConfirmacaoDoChefe && $progresso->exigeConfirmacaoParaDesmarcar()) {
+            $progresso->desmarcar_solicitado_em = $progresso->desmarcar_solicitado_em ? null : now();
+            $progresso->save();
+
+            return;
+        }
+
         $progresso->marcado_para_fazer = ! $progresso->marcado_para_fazer;
         $progresso->marcado_para_fazer_em = $progresso->marcado_para_fazer ? now() : null;
         $progresso->save();
+
+        // No Pioneiro, o "quero fazer" pendente entra no cálculo do bloco.
+        app(StatusProgressaoService::class)->limparCache();
     }
 }

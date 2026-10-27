@@ -281,7 +281,9 @@
                                                         />
                                                         <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
                                                             <x-filament::badge color="warning" size="sm">Personalizado</x-filament::badge>
-                                                            <x-progresso.indicador-quero-fazer :marcado="! $marcadoDiretoPersonalizado && (bool) ($registroPersonalizado?->marcado_para_fazer)" />
+                                                            @if (! $marcadoDiretoPersonalizado)
+                                                                <x-progresso.quero-fazer-admin :registro="$registroPersonalizado" tipo="personalizado" :item-id="$itemPersonalizado->id" />
+                                                            @endif
                                                             <span>{{ $itemPersonalizado->descricao }}</span>
                                                             @if ($solicitadoPersonalizado && ! $marcadoDiretoPersonalizado)
                                                                 <x-filament::badge color="warning" size="sm">

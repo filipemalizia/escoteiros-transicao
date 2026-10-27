@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\StatusProgressaoService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -34,6 +35,16 @@ class Jovem extends Model
                 $jovem->ramo_atual_id = Equipe::find($jovem->equipe_id)?->ramo_id ?? $jovem->ramo_atual_id;
             }
         });
+    }
+
+    /**
+     * No Ramo Pioneiro a conclusão do bloco segue o Projeto de Vida do
+     * jovem (o que ele marca como "quero fazer"), não um mínimo fixo de
+     * Ações Variáveis — ver {@see StatusProgressaoService}.
+     */
+    public function usaProjetoDeVida(): bool
+    {
+        return $this->ramoAtual?->nome === 'Pioneiro';
     }
 
     public function ramoAtual(): BelongsTo

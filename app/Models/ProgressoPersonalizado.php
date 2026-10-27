@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Concerns\ControlaDesmarcacaoQueroFazer;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProgressoPersonalizado extends Model
 {
+    use ControlaDesmarcacaoQueroFazer;
+
     protected $table = 'progresso_personalizado';
 
     protected $fillable = [

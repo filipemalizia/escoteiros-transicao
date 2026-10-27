@@ -116,3 +116,19 @@ it('marca o alerta quando a pendencia vem de um requisito de especialidade', fun
 
     expect($registro->tem_pendencia_especialidade)->toBeTrue();
 });
+
+it('marca o aviso de pedido para desmarcar quero fazer, sem confundir com avaliacao pendente', function () {
+    $jovem = Jovem::create(['nome' => 'Pediu Desmarcar', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+    $outro = Jovem::create(['nome' => 'Sem Pedido', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+
+    ProgressoNovo::create(['jovem_id' => $jovem->id, 'item_novo_id' => $this->item->id, 'marcado_para_fazer' => true, 'marcado_para_fazer_em' => now()->subDays(3), 'desmarcar_solicitado_em' => now()]);
+    ProgressoNovo::create(['jovem_id' => $outro->id, 'item_novo_id' => $this->item->id, 'marcado_para_fazer' => true, 'marcado_para_fazer_em' => now()->subDays(3)]);
+
+    $this->actingAs($this->admin);
+
+    $registros = Livewire::test(ListJovens::class)->instance()->getTable()->getRecords();
+
+    expect((bool) $registros->firstWhere('id', $jovem->id)->tem_pedido_desmarcar_novo)->toBeTrue()
+        ->and((bool) $registros->firstWhere('id', $jovem->id)->tem_pendencia_novo)->toBeFalse()
+        ->and((bool) $registros->firstWhere('id', $outro->id)->tem_pedido_desmarcar_novo)->toBeFalse();
+});
