@@ -4,7 +4,9 @@ namespace App\Services\Portal;
 
 use App\Models\Jovem;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Str;
 
 /**
  * Sessão leve pro portal público do jovem — não é uma conta de usuário
@@ -18,6 +20,32 @@ class SessaoJovemService
     private const CHAVE_JOVEM_ID = 'portal_jovem_id';
 
     private const CHAVE_AUTENTICADO_EM = 'portal_autenticado_em';
+
+    /**
+     * Chave do contador de erros de login por registro (sempre minúsculo e
+     * sem espaços nas pontas, igual à busca do jovem no login).
+     */
+    public static function chaveFalhasLogin(string $registro): string
+    {
+        return 'portal-login-falhas:'.Str::lower(trim($registro));
+    }
+
+    public function loginBloqueado(Jovem $jovem): bool
+    {
+        return filled($jovem->registro)
+            && RateLimiter::tooManyAttempts(self::chaveFalhasLogin($jovem->registro), config('portal.login_max_falhas'));
+    }
+
+    /**
+     * Libera o login de um jovem bloqueado por erros de registro/data
+     * (feito pelo chefe, depois de confirmar quem é).
+     */
+    public function liberarLogin(Jovem $jovem): void
+    {
+        if (filled($jovem->registro)) {
+            RateLimiter::clear(self::chaveFalhasLogin($jovem->registro));
+        }
+    }
 
     public function iniciarSessao(Jovem $jovem): void
     {

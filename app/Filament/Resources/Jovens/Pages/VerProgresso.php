@@ -17,6 +17,7 @@ use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
 use App\Services\EtapaProgressaoService;
+use App\Services\Portal\SessaoJovemService;
 use App\Services\StatusProgressaoService;
 use App\Support\Busca;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -312,6 +313,19 @@ class VerProgresso extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('liberarAcessoPortal')
+                ->label('Liberar acesso ao portal')
+                ->icon('heroicon-o-lock-open')
+                ->color('warning')
+                ->visible(fn () => app(SessaoJovemService::class)->loginBloqueado($this->getRecord()))
+                ->requiresConfirmation()
+                ->modalHeading('Liberar acesso ao portal')
+                ->modalDescription('O acesso deste jovem foi bloqueado por várias tentativas erradas de registro e data de nascimento. Libere só depois de confirmar que é o próprio jovem.')
+                ->action(function () {
+                    app(SessaoJovemService::class)->liberarLogin($this->getRecord());
+
+                    Notification::make()->title('Acesso ao portal liberado')->success()->send();
+                }),
             Action::make('buscarTudo')
                 ->label('Buscar em tudo')
                 ->icon('heroicon-o-magnifying-glass')

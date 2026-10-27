@@ -14,6 +14,7 @@ use App\Models\ProgressoNovo;
 use App\Models\Ramo;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Livewire\Livewire;
 
 uses(RefreshDatabase::class);
@@ -216,7 +217,7 @@ it('mostra uma etapa do programa novo ja alcancada na lista de pendencias', func
         ->and($etapas->first()['entrega'])->toBeNull();
 });
 
-it('nao mostra uma etapa ainda nao alcancada', function () {
+it('nao mostra uma etapa ainda nao alcancada, mas a primeira ja nasce alcancada', function () {
     concluirBlocos($this->jovem, 3);
 
     $pendencias = Livewire::test(EntregaDistintivos::class)->instance()->getPendencias();
@@ -277,4 +278,23 @@ it('nao recalcula as conquistas a cada clique, so relê as entregas', function (
     $consultas = collect(DB::getQueryLog())->pluck('query')->implode("\n");
 
     expect($consultas)->not->toContain('progresso_especialidade');
+});
+
+it('usa o horario de Brasilia: marcar entregue as 22h30 ainda e o mesmo dia, nao o dia seguinte em UTC', function () {
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $this->item->id,
+        'concluido' => true,
+        'data_conclusao' => '2026-10-27',
+    ]);
+
+    // 01:30 UTC de 28/10 = 22:30 de 27/10 em Brasília.
+    Carbon::setTestNow(Carbon::parse('2026-10-28 01:30:00', 'UTC'));
+
+    Livewire::test(EntregaDistintivos::class)->call('marcarEntregueHoje', 'especialidade', $this->jovem->id, (string) $this->especialidade->id);
+
+    expect(config('app.timezone'))->toBe('America/Sao_Paulo')
+        ->and(EntregaDistintivo::first()->entregue_em->toDateString())->toBe('2026-10-27');
+
+    Carbon::setTestNow();
 });
