@@ -69,6 +69,11 @@ class JovemForm
                     })
                     ->nullable(),
 
+                DatePicker::make('data_promessa')
+                    ->label('Data da Promessa')
+                    ->maxDate(now())
+                    ->helperText('Os distintivos só são entregues depois da Promessa. Vale para o ramo atual: se o jovem mudar de ramo, registre a nova.'),
+
                 Section::make('Requisitos Complementares')
                     ->description('Requisitos que não vêm do checklist de Itens (contadores, insígnias, recomendações).')
                     ->visible(fn (Get $get) => filled($get('ramo_atual_id')))

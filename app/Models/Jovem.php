@@ -13,10 +13,11 @@ class Jovem extends Model
 {
     protected $table = 'jovens';
 
-    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id', 'portal_visitado_em'];
+    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id', 'portal_visitado_em', 'data_promessa'];
 
     protected $casts = [
         'data_nascimento' => 'date',
+        'data_promessa' => 'date',
         'portal_visitado_em' => 'datetime',
     ];
 
@@ -33,6 +34,12 @@ class Jovem extends Model
         static::saving(function (Jovem $jovem) {
             if ($jovem->isDirty('equipe_id') && $jovem->equipe_id) {
                 $jovem->ramo_atual_id = Equipe::find($jovem->equipe_id)?->ramo_id ?? $jovem->ramo_atual_id;
+            }
+
+            // A Promessa vale pro ramo em que foi registrada: se o jovem
+            // sobe de ramo, ela deixa de contar até ser registrada de novo.
+            if ($jovem->isDirty('data_promessa')) {
+                $jovem->promessa_ramo_id = $jovem->data_promessa ? $jovem->ramo_atual_id : null;
             }
         });
     }
@@ -119,6 +126,21 @@ class Jovem extends Model
     public function progressoNovo(): HasMany
     {
         return $this->hasMany(ProgressoNovo::class);
+    }
+
+    public function progressoAcolhida(): HasMany
+    {
+        return $this->hasMany(ProgressoAcolhida::class);
+    }
+
+    /**
+     * Fez a Promessa no ramo em que está agora. Só depois dela os
+     * distintivos podem ser entregues (a compra pode ser adiantada).
+     */
+    public function promessaRealizada(): bool
+    {
+        return $this->data_promessa !== null
+            && (int) $this->promessa_ramo_id === (int) $this->ramo_atual_id;
     }
 
     public function requisitosComplementares(): HasMany
