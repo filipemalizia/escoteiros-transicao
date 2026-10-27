@@ -21,7 +21,7 @@ function criarBlocosConcluidos(Jovem $jovem, EixoNovo $eixo, int $quantidade): v
     }
 }
 
-it('monta a trilha com as 4 etapas do Lobinho (4/8/13/18 blocos) mais o reconhecimento no final', function () {
+it('monta a trilha com as 4 etapas do Lobinho (0/4/8/13 blocos) mais o reconhecimento no final', function () {
     $service = new EtapaProgressaoService;
     $ramo = Ramo::create(['nome' => 'Lobinho']);
     $jovem = Jovem::create(['nome' => 'Jovem de Teste', 'data_nascimento' => '2015-01-01', 'ramo_atual_id' => $ramo->id]);
@@ -36,7 +36,7 @@ it('monta a trilha com as 4 etapas do Lobinho (4/8/13/18 blocos) mais o reconhec
     $porLabel = collect($trilha)->keyBy('label');
 
     // Os cortes são cumulativos (sempre sobre os mesmos 18 blocos), então
-    // o preenchimento de cada distintivo é `concluidos / corte_dele`, não
+    // o preenchimento de cada distintivo é `concluidos / minimo_dele`, não
     // relativo ao corte anterior - os 5 blocos já concluídos contam a
     // favor de TODAS as etapas futuras, só que numa fração menor conforme
     // o corte fica mais distante (a "escada").
@@ -44,14 +44,16 @@ it('monta a trilha com as 4 etapas do Lobinho (4/8/13/18 blocos) mais o reconhec
         ->and($porLabel['Pata Tenra']['tipo'])->toBe('etapa')
         ->and($porLabel['Pata Tenra']['alcancado'])->toBeTrue()
         ->and($porLabel['Pata Tenra']['progresso'])->toBe(1.0)
-        ->and($porLabel['Saltador']['alcancado'])->toBeFalse()
+        ->and($porLabel['Pata Tenra']['atual'])->toBeFalse()
+        ->and($porLabel['Saltador']['alcancado'])->toBeTrue()
         ->and($porLabel['Saltador']['atual'])->toBeTrue()
-        ->and($porLabel['Saltador']['faltam'])->toBe(3)
-        ->and($porLabel['Saltador']['progresso'])->toBe(5 / 8)
-        ->and($porLabel['Rastreador']['progresso'])->toBe(5 / 13)
-        ->and($porLabel['Caçador']['progresso'])->toBe(5 / 18)
+        ->and($porLabel['Rastreador']['alcancado'])->toBeFalse()
+        ->and($porLabel['Rastreador']['faltam'])->toBe(3)
+        ->and($porLabel['Rastreador']['progresso'])->toBe(5 / 8)
+        ->and($porLabel['Caçador']['progresso'])->toBe(5 / 13)
         ->and($porLabel['Cruzeiro do Sul']['tipo'])->toBe('reconhecimento')
         ->and($porLabel['Cruzeiro do Sul']['alcancado'])->toBeFalse()
+        ->and($porLabel['Cruzeiro do Sul']['progresso'])->toBe((5 / 18) / 2)
         ->and($porLabel['Cruzeiro do Sul']['faltam'])->toBe(13);
 });
 
@@ -89,7 +91,8 @@ it('reconhecimento so fica alcancado quando os 18 blocos E os requisitos complem
     // Reconhecimento é sempre igual ao da última Etapa.
     expect($reconhecimento['faltam'])->toBe(0)
         ->and($reconhecimento['alcancado'])->toBeFalse()
-        ->and($reconhecimento['atual'])->toBeTrue()
+        ->and($reconhecimento['atual'])->toBeFalse()
+        ->and(collect($trilha)->firstWhere('atual', true)['label'])->toBe('Caçador')
         ->and($reconhecimento['progresso'])->toBe(0.5);
 });
 
@@ -119,9 +122,9 @@ it('preenche a data em que cada corte de etapa foi alcancado, pela ordem cronolo
     $jovem = Jovem::create(['nome' => 'Jovem de Teste', 'data_nascimento' => '2015-01-01', 'ramo_atual_id' => $ramo->id]);
     $eixo = EixoNovo::create(['ramo_id' => $ramo->id, 'nome' => 'Eixo Corporal']);
 
-    // 4 blocos concluídos em datas fora de ordem de propósito - Pata Tenra
-    // (corte 4) deve usar a data do 4º concluído cronologicamente, não a
-    // data de cadastro do bloco.
+    // 4 blocos concluídos em datas fora de ordem de propósito - Saltador
+    // (começa em 4) deve usar a data do 4º concluído cronologicamente, não
+    // a data de cadastro do bloco. Pata Tenra (0 blocos) não tem data.
     $datas = ['2026-01-20', '2026-01-05', '2026-01-15', '2026-01-10'];
 
     foreach ($datas as $i => $data) {
@@ -137,8 +140,9 @@ it('preenche a data em que cada corte de etapa foi alcancado, pela ordem cronolo
     $trilha = $service->trilhaEtapaNovo($jovem);
     $porLabel = collect($trilha)->keyBy('label');
 
-    expect($porLabel['Pata Tenra']['data_alcancado']->format('Y-m-d'))->toBe('2026-01-20')
-        ->and($porLabel['Saltador']['data_alcancado'])->toBeNull();
+    expect($porLabel['Pata Tenra']['data_alcancado'])->toBeNull()
+        ->and($porLabel['Saltador']['data_alcancado']->format('Y-m-d'))->toBe('2026-01-20')
+        ->and($porLabel['Rastreador']['data_alcancado'])->toBeNull();
 });
 
 it('retorna lista vazia quando o ramo nao tem cortes de etapa definidos', function () {

@@ -38,7 +38,7 @@ beforeEach(function () {
 /**
  * Conclui `$quantidade` blocos (1 item Obrigatório cada, sem variáveis) pro
  * jovem informado — o suficiente pra bater os cortes de etapa do Sênior
- * ([6, 'Escalada'], [12, 'Conquista'], [18, 'Azimute']).
+ * ([0, 'Escalada'], [6, 'Conquista'], [12, 'Azimute']; a primeira nasce alcançada).
  */
 function concluirBlocos(Jovem $jovem, int $quantidade): void
 {
@@ -210,7 +210,7 @@ it('mostra uma etapa do programa novo ja alcancada na lista de pendencias', func
     $pendencias = Livewire::test(EntregaDistintivos::class)->instance()->getPendencias();
     $etapas = collect($pendencias)->where('origem', 'etapa');
 
-    expect($etapas)->toHaveCount(1)
+    expect($etapas->pluck('titulo')->all())->toBe(['Escalada', 'Conquista'])
         ->and($etapas->first()['titulo'])->toBe('Escalada')
         ->and($etapas->first()['tipo_label'])->toBe('Etapa')
         ->and($etapas->first()['entrega'])->toBeNull();
@@ -221,7 +221,7 @@ it('nao mostra uma etapa ainda nao alcancada', function () {
 
     $pendencias = Livewire::test(EntregaDistintivos::class)->instance()->getPendencias();
 
-    expect(collect($pendencias)->where('origem', 'etapa'))->toHaveCount(0);
+    expect(collect($pendencias)->where('origem', 'etapa')->pluck('titulo')->all())->toBe(['Escalada']);
 });
 
 it('marca uma etapa como comprada e entregue', function () {
@@ -234,7 +234,7 @@ it('marca uma etapa como comprada e entregue', function () {
         ->and($entrega->entregue_em->isToday())->toBeTrue();
 
     $pendencias = Livewire::test(EntregaDistintivos::class)->instance()->getPendencias();
-    expect(collect($pendencias)->where('origem', 'etapa'))->toHaveCount(0);
+    expect(collect($pendencias)->where('origem', 'etapa')->pluck('titulo')->all())->toBe(['Conquista']);
 });
 
 it('edita as datas de uma etapa pelo modal', function () {

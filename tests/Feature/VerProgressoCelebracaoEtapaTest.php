@@ -16,7 +16,7 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     $this->actingAs(User::factory()->create(['is_admin' => true]));
 
-    // Lobinho bate "Pata Tenra" com 4 blocos concluídos (ver
+    // Lobinho bate "Saltador" com 4 blocos concluídos (ver
     // EtapaProgressaoService::CORTES_ETAPA_NOVO) - 3 já concluídos de
     // propósito, faltando só o 4º pro chefe completar durante o teste.
     $this->ramo = Ramo::create(['nome' => 'Lobinho']);
@@ -39,13 +39,13 @@ it('dispara o popup de conquista ao completar o bloco que alcanca uma nova etapa
         ->assertDispatched(
             'abrir-cartao-conquista',
             tipo: 'etapa',
-            titulo: 'Pata Tenra',
+            titulo: 'Saltador',
             jovemNome: $this->jovem->nomeExibicao(),
         );
 });
 
 it('dispara o popup de conquista com tipo bloco (nao etapa nem eixo) quando o bloco concluido nao fecha nenhuma etapa ou eixo', function () {
-    // Ainda faltam 2 blocos pra bater o próximo corte (Pata Tenra já foi
+    // Ainda faltam 2 blocos pra bater o próximo corte (Saltador já foi
     // batido nesse cenário) - completar só mais 1 deve celebrar o Bloco em
     // si, não uma Etapa nova.
     Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
