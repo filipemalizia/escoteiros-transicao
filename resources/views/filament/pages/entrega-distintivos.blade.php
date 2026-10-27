@@ -13,7 +13,18 @@
         </label>
     </div>
 
-    @php $pendencias = $this->getPendencias(); @endphp
+    @php
+        $pendencias = $this->getPendencias();
+        $aguardandoPromessa = collect($pendencias)->filter(fn ($linha) => ! $linha['promessa_realizada'] && ! $linha['entrega']?->entregue_em);
+    @endphp
+
+    @if ($aguardandoPromessa->isNotEmpty())
+        <div class="mb-4 flex items-center gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-400">
+            {{ $aguardandoPromessa->count() }} {{ $aguardandoPromessa->count() === 1 ? 'distintivo aguardando' : 'distintivos aguardando' }}
+            a Promessa de {{ $aguardandoPromessa->pluck('jovem.id')->unique()->count() }} {{ $aguardandoPromessa->pluck('jovem.id')->unique()->count() === 1 ? 'jovem' : 'jovens' }}.
+            A compra pode ser feita, mas a entrega só depois da Promessa.
+        </div>
+    @endif
 
     @if (empty($pendencias))
         <x-filament::section>
@@ -42,6 +53,9 @@
                             <td class="px-4 py-2 align-top">
                                 <div class="font-medium text-gray-900 dark:text-white">{{ $jovem->nome }}</div>
                                 <div class="text-xs text-gray-500 dark:text-gray-400">{{ $jovem->ramo }}</div>
+                                @if (! $linha['promessa_realizada'])
+                                    <x-filament::badge color="warning" size="sm" class="mt-1">Promessa pendente</x-filament::badge>
+                                @endif
                             </td>
                             <td class="px-4 py-2 align-top">
                                 <div class="flex flex-wrap items-center gap-1">
@@ -82,6 +96,8 @@
                             <td class="px-4 py-2 align-top">
                                 @if ($entrega?->entregue_em)
                                     <x-filament::badge color="success">{{ $entrega->entregue_em->format('d/m/Y') }}</x-filament::badge>
+                                @elseif (! $linha['promessa_realizada'])
+                                    <span class="text-xs text-gray-400 dark:text-gray-500" title="Registre a Promessa do jovem para liberar a entrega">Aguardando Promessa</span>
                                 @else
                                     <button
                                         type="button"
@@ -123,8 +139,12 @@
         />
 
         <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Entregue em</label>
+        @if ($editandoSemPromessa)
+            <p class="mb-2 text-xs text-amber-600 dark:text-amber-400">Promessa pendente: só é possível registrar a entrega depois que o jovem fizer a Promessa.</p>
+        @endif
         <input
             type="date"
+            @disabled($editandoSemPromessa)
             wire:model="editandoEntregueEm"
             class="w-full rounded-lg border-gray-300 text-sm focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
         />

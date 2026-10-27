@@ -11,6 +11,7 @@ use App\Services\EspecialidadeStatusService;
 use App\Services\EtapaProgressaoService;
 use App\Services\StatusProgressaoService;
 use BackedEnum;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Carbon;
@@ -27,6 +28,10 @@ use UnitEnum;
  * já foi entregue antes desta ferramenta existir, e o serviço não expõe uma
  * trilha completa pra ele, só a etapa atual). Só pro chefe/admin; o jovem
  * nunca vê nada disso, em lugar nenhum.
+ *
+ * Nenhum distintivo é entregue antes da Promessa do jovem: a compra pode ser
+ * adiantada, mas "Marcar entregue" fica bloqueado até a data da Promessa ser
+ * registrada.
  *
  * Ao contrário das outras páginas de "Ferramentas" (todas admin-only), esta
  * também é útil pro chefe comum — cada um cuida da entrega física da sua
@@ -70,6 +75,12 @@ class EntregaDistintivos extends Page
     public string $editandoEntregueEm = '';
 
     /**
+     * O jovem do modal de edição ainda não fez a Promessa: a compra pode ser
+     * registrada, mas a entrega fica bloqueada.
+     */
+    public bool $editandoSemPromessa = false;
+
+    /**
      * Uma linha por (jovem, especialidade/insígnia OU etapa/reconhecimento)
      * já conquistada, com o registro de entrega física, se já existir.
      *
@@ -80,7 +91,7 @@ class EntregaDistintivos extends Page
      * conquista de todos os jovens a cada clique era a causa da lentidão.
      * Só as entregas (2 queries leves) são relidas a cada render.
      *
-     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, datas: array<int, array{rotulo: string, data: ?string}>, entrega: EntregaDistintivo|EntregaEtapa|null}>
+     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, primeira_etapa: bool, datas: array<int, array{rotulo: string, data: ?string}>, promessa_realizada: bool, entrega: EntregaDistintivo|EntregaEtapa|null}>
      */
     public function getPendencias(): array
     {
@@ -98,9 +109,24 @@ class EntregaDistintivos extends Page
             ->get()
             ->keyBy(fn (EntregaEtapa $entrega) => "{$entrega->jovem_id}:{$entrega->etapa}");
 
+        // A Promessa muda fora desta tela (e as conquistas ficam em cache), então
+        // é relida a cada render: 1 query leve, igual às entregas.
+        $promessas = Jovem::query()
+            ->whereIn('id', $jovemIds)
+            ->get(['id', 'ramo_atual_id', 'data_promessa', 'promessa_ramo_id'])
+            ->keyBy('id');
+
         $linhas = [];
 
         foreach ($conquistas as $conquista) {
+            $jovemPromessa = $promessas[$conquista['jovem']['id']] ?? null;
+            $promessaRealizada = (bool) $jovemPromessa?->promessaRealizada();
+
+            // A primeira etapa é entregue junto com a Promessa: a data dela é a da Promessa.
+            if ($conquista['primeira_etapa'] && $promessaRealizada) {
+                $conquista['datas'] = [['rotulo' => 'Alcançada', 'data' => $jovemPromessa->data_promessa->format('d/m/Y')]];
+            }
+
             $entrega = $conquista['origem'] === 'especialidade'
                 ? $entregasEspecialidade["{$conquista['jovem']['id']}:{$conquista['chave']}"] ?? null
                 : $entregasEtapa["{$conquista['jovem']['id']}:{$conquista['chave']}"] ?? null;
@@ -109,7 +135,7 @@ class EntregaDistintivos extends Page
                 continue;
             }
 
-            $linhas[] = [...$conquista, 'entrega' => $entrega];
+            $linhas[] = [...$conquista, 'promessa_realizada' => $promessaRealizada, 'entrega' => $entrega];
         }
 
         return $linhas;
@@ -122,7 +148,7 @@ class EntregaDistintivos extends Page
      * por ramo, e `EspecialidadeStatusService` é singleton com cache por
      * requisição (1 query por jovem).
      *
-     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, datas: array<int, array{rotulo: string, data: ?string}>}>
+     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, primeira_etapa: bool, datas: array<int, array{rotulo: string, data: ?string}>}>
      */
     #[Computed(persist: true)]
     public function conquistas(): array
@@ -173,6 +199,7 @@ class EntregaDistintivos extends Page
                     'tipo_label' => $especialidade->tipo,
                     'titulo' => $especialidade->nome,
                     'nivel_atingido' => $status['nivel_atingido'],
+                    'primeira_etapa' => false,
                     'datas' => array_map(
                         fn (array $conquista) => ['rotulo' => $conquista['rotulo'], 'data' => $conquista['data']?->format('d/m/Y')],
                         $progressoService->datasConquistaEspecialidade($jovem, $especialidade),
@@ -180,7 +207,7 @@ class EntregaDistintivos extends Page
                 ];
             }
 
-            foreach ($etapaService->trilhaEtapaNovo($jovem) as $marco) {
+            foreach ($etapaService->trilhaEtapaNovo($jovem) as $indiceMarco => $marco) {
                 if (! $marco['alcancado']) {
                     continue;
                 }
@@ -192,6 +219,7 @@ class EntregaDistintivos extends Page
                     'tipo_label' => ucfirst($marco['tipo']),
                     'titulo' => $marco['label'],
                     'nivel_atingido' => null,
+                    'primeira_etapa' => $indiceMarco === 0 && $marco['tipo'] === 'etapa',
                     'datas' => [['rotulo' => 'Alcançada', 'data' => $marco['data_alcancado']?->format('d/m/Y')]],
                 ];
             }
@@ -207,6 +235,7 @@ class EntregaDistintivos extends Page
         $this->editandoChave = $chave;
         $this->editandoCompradoEm = $compradoEm ?? '';
         $this->editandoEntregueEm = $entregueEm ?? '';
+        $this->editandoSemPromessa = ! $this->jovemFezPromessa($jovemId);
     }
 
     public function fecharEdicaoEntrega(): void
@@ -216,6 +245,7 @@ class EntregaDistintivos extends Page
         $this->editandoChave = '';
         $this->editandoCompradoEm = '';
         $this->editandoEntregueEm = '';
+        $this->editandoSemPromessa = false;
     }
 
     /**
@@ -226,6 +256,12 @@ class EntregaDistintivos extends Page
     public function salvarEntrega(): void
     {
         if (! $this->editandoOrigem || ! $this->editandoJovemId) {
+            return;
+        }
+
+        if (filled($this->editandoEntregueEm) && ! $this->jovemFezPromessa($this->editandoJovemId)) {
+            $this->avisarPromessaPendente();
+
             return;
         }
 
@@ -262,12 +298,32 @@ class EntregaDistintivos extends Page
      */
     public function marcarEntregueHoje(string $origem, int $jovemId, string $chave): void
     {
+        if (! $this->jovemFezPromessa($jovemId)) {
+            $this->avisarPromessaPendente();
+
+            return;
+        }
+
         $entrega = $this->localizarOuNovaEntrega($origem, $jovemId, $chave);
 
         $entrega->comprado_em ??= Carbon::today();
         $entrega->entregue_em = Carbon::today();
         $entrega->registrado_por_id = auth()->id();
         $entrega->save();
+    }
+
+    private function jovemFezPromessa(int $jovemId): bool
+    {
+        return (bool) Jovem::find($jovemId)?->promessaRealizada();
+    }
+
+    private function avisarPromessaPendente(): void
+    {
+        Notification::make()
+            ->title('Promessa pendente')
+            ->body('Nenhum distintivo é entregue antes da Promessa. Registre a data da Promessa do jovem para liberar a entrega.')
+            ->warning()
+            ->send();
     }
 
     private function localizarOuNovaEntrega(string $origem, int $jovemId, string $chave): EntregaDistintivo|EntregaEtapa
