@@ -515,6 +515,35 @@ class StatusProgressaoService
     }
 
     /**
+     * Datas de conquista pra exibir ao chefe: uma entrada por nível já
+     * atingido (estrutura `itens_niveis`) ou uma só "Concluída" (estrutura
+     * `atividades_temas`/Insígnia). Vazio se nada foi conquistado ainda.
+     *
+     * @return array<int, array{rotulo: string, data: ?Carbon}>
+     */
+    public function datasConquistaEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade): array
+    {
+        $status = $this->statusEspecialidade($jovem, $especialidade);
+
+        if ($status['nivel_atingido'] !== null) {
+            return collect([1, 2])
+                ->filter(fn (int $nivel) => $status['nivel_atingido'] >= $nivel)
+                ->map(fn (int $nivel) => [
+                    'rotulo' => "Nível {$nivel}",
+                    'data' => $this->dataNivelEspecialidade($jovem, $especialidade, $nivel),
+                ])
+                ->values()
+                ->all();
+        }
+
+        if ($status['status'] !== 'Concluído') {
+            return [];
+        }
+
+        return [['rotulo' => 'Concluída', 'data' => $this->dataConclusaoEspecialidade($jovem, $especialidade)]];
+    }
+
+    /**
      * @return array<int, Carbon>
      */
     private function datasItensEspecialidadeConcluidos(Jovem $jovem): array

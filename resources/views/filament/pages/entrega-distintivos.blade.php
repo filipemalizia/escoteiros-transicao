@@ -34,14 +34,14 @@
                 <tbody class="divide-y divide-gray-100 dark:divide-white/10">
                     @foreach ($pendencias as $linha)
                         @php
-                            $jovem = $linha['jovem'];
+                            $jovem = (object) $linha['jovem'];
                             $entrega = $linha['entrega'];
                             $origemArgs = "'{$linha['origem']}', {$jovem->id}, ".json_encode($linha['chave']);
                         @endphp
                         <tr wire:key="entrega-{{ $linha['origem'] }}-{{ $jovem->id }}-{{ \Illuminate\Support\Str::slug($linha['chave']) }}">
                             <td class="px-4 py-2 align-top">
                                 <div class="font-medium text-gray-900 dark:text-white">{{ $jovem->nome }}</div>
-                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ $jovem->ramoAtual->nome }}</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ $jovem->ramo }}</div>
                             </td>
                             <td class="px-4 py-2 align-top">
                                 <div class="flex flex-wrap items-center gap-1">
@@ -58,6 +58,13 @@
                                         <span class="text-xs text-gray-500 dark:text-gray-400">(Nível {{ $linha['nivel_atingido'] }})</span>
                                     @endif
                                 </div>
+                                @if (! empty($linha['datas']))
+                                    <div class="mt-1 flex flex-wrap gap-x-3 text-xs text-gray-500 dark:text-gray-400">
+                                        @foreach ($linha['datas'] as $conquista)
+                                            <span>{{ $conquista['rotulo'] }}{{ $conquista['data'] ? ' em '.$conquista['data'] : '' }}</span>
+                                        @endforeach
+                                    </div>
+                                @endif
                             </td>
                             <td class="px-4 py-2 align-top">
                                 @if ($entrega?->comprado_em)

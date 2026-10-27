@@ -57,6 +57,11 @@ function concluirBlocos(Jovem $jovem, int $quantidade): void
     }
 }
 
+function somenteEspecialidades(array $pendencias): array
+{
+    return array_values(array_filter($pendencias, fn (array $linha) => $linha['origem'] === 'especialidade'));
+}
+
 it('mostra uma especialidade concluida e ainda nao entregue na lista de pendencias', function () {
     ProgressoEspecialidade::create([
         'jovem_id' => $this->jovem->id,
@@ -65,17 +70,17 @@ it('mostra uma especialidade concluida e ainda nao entregue na lista de pendenci
         'data_conclusao' => today(),
     ]);
 
-    $pendencias = Livewire::test(EntregaDistintivos::class)->instance()->getPendencias();
+    $pendencias = somenteEspecialidades(Livewire::test(EntregaDistintivos::class)->instance()->getPendencias());
 
     expect($pendencias)->toHaveCount(1)
-        ->and($pendencias[0]['jovem']->id)->toBe($this->jovem->id)
+        ->and($pendencias[0]['jovem']['id'])->toBe($this->jovem->id)
         ->and($pendencias[0]['origem'])->toBe('especialidade')
         ->and($pendencias[0]['chave'])->toBe((string) $this->especialidade->id)
         ->and($pendencias[0]['entrega'])->toBeNull();
 });
 
 it('nao mostra uma especialidade ainda nao concluida', function () {
-    $pendencias = Livewire::test(EntregaDistintivos::class)->instance()->getPendencias();
+    $pendencias = somenteEspecialidades(Livewire::test(EntregaDistintivos::class)->instance()->getPendencias());
 
     expect($pendencias)->toHaveCount(0);
 });
@@ -126,10 +131,10 @@ it('some da lista padrao quando ja entregue, mas aparece com "mostrar entregues"
     ]);
 
     $component = Livewire::test(EntregaDistintivos::class);
-    expect($component->instance()->getPendencias())->toHaveCount(0);
+    expect(somenteEspecialidades($component->instance()->getPendencias()))->toHaveCount(0);
 
     $component->set('mostrarEntregues', true);
-    expect($component->instance()->getPendencias())->toHaveCount(1);
+    expect(somenteEspecialidades($component->instance()->getPendencias()))->toHaveCount(1);
 });
 
 it('edita as datas de compra e entrega pelo modal', function () {
@@ -244,4 +249,32 @@ it('edita as datas de uma etapa pelo modal', function () {
     $entrega = EntregaEtapa::where('jovem_id', $this->jovem->id)->where('etapa', 'Escalada')->first();
     expect($entrega->comprado_em->toDateString())->toBe('2026-01-10')
         ->and($entrega->entregue_em->toDateString())->toBe('2026-01-15');
+});
+
+it('mostra a data de conclusao da especialidade na tela de entrega', function () {
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $this->item->id,
+        'concluido' => true,
+        'data_conclusao' => '2026-04-15',
+    ]);
+
+    Livewire::test(EntregaDistintivos::class)->assertSee('Concluída em 15/04/2026');
+});
+
+it('nao recalcula as conquistas a cada clique, so relê as entregas', function () {
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $this->item->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+
+    $componente = Livewire::test(EntregaDistintivos::class);
+
+    DB::enableQueryLog();
+    $componente->call('marcarEntregueHoje', 'especialidade', $this->jovem->id, (string) $this->especialidade->id);
+    $consultas = collect(DB::getQueryLog())->pluck('query')->implode("\n");
+
+    expect($consultas)->not->toContain('progresso_especialidade');
 });

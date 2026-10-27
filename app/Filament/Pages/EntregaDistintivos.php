@@ -9,10 +9,12 @@ use App\Models\EspecialidadeDistintivo;
 use App\Models\Jovem;
 use App\Services\EspecialidadeStatusService;
 use App\Services\EtapaProgressaoService;
+use App\Services\StatusProgressaoService;
 use BackedEnum;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Carbon;
+use Livewire\Attributes\Computed;
 use UnitEnum;
 
 /**
@@ -70,14 +72,60 @@ class EntregaDistintivos extends Page
     /**
      * Uma linha por (jovem, especialidade/insígnia OU etapa/reconhecimento)
      * já conquistada, com o registro de entrega física, se já existir.
-     * `especialidade->grupos.itens` já vem eager-loaded por ramo (uma query
-     * só por ramo distinto, não por jovem), e `EspecialidadeStatusService`
-     * é singleton com cache por requisição (1 query por jovem) — ver notas
-     * de performance no service.
      *
-     * @return array<int, array{jovem: Jovem, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, entrega: EntregaDistintivo|EntregaEtapa|null}>
+     * A parte cara (status de cada especialidade, trilha de etapas com
+     * imagens, datas) vem de {@see conquistas()}, calculada uma vez por
+     * carregamento da página: cada clique em "Marcar comprado/entregue" é
+     * uma requisição Livewire que re-renderiza tudo, e recalcular a
+     * conquista de todos os jovens a cada clique era a causa da lentidão.
+     * Só as entregas (2 queries leves) são relidas a cada render.
+     *
+     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, datas: array<int, array{rotulo: string, data: ?string}>, entrega: EntregaDistintivo|EntregaEtapa|null}>
      */
     public function getPendencias(): array
+    {
+        $conquistas = $this->conquistas();
+
+        $jovemIds = array_values(array_unique(array_column(array_column($conquistas, 'jovem'), 'id')));
+
+        $entregasEspecialidade = EntregaDistintivo::query()
+            ->whereIn('jovem_id', $jovemIds)
+            ->get()
+            ->keyBy(fn (EntregaDistintivo $entrega) => "{$entrega->jovem_id}:{$entrega->especialidade_distintivo_id}");
+
+        $entregasEtapa = EntregaEtapa::query()
+            ->whereIn('jovem_id', $jovemIds)
+            ->get()
+            ->keyBy(fn (EntregaEtapa $entrega) => "{$entrega->jovem_id}:{$entrega->etapa}");
+
+        $linhas = [];
+
+        foreach ($conquistas as $conquista) {
+            $entrega = $conquista['origem'] === 'especialidade'
+                ? $entregasEspecialidade["{$conquista['jovem']['id']}:{$conquista['chave']}"] ?? null
+                : $entregasEtapa["{$conquista['jovem']['id']}:{$conquista['chave']}"] ?? null;
+
+            if (! $this->mostrarEntregues && $entrega?->entregue_em) {
+                continue;
+            }
+
+            $linhas[] = [...$conquista, 'entrega' => $entrega];
+        }
+
+        return $linhas;
+    }
+
+    /**
+     * Tudo o que já foi conquistado pelos jovens visíveis ao usuário, em
+     * dados simples (sem models) pra poder ficar em cache entre requisições
+     * do mesmo componente. `especialidade->grupos.itens` vem eager-loaded
+     * por ramo, e `EspecialidadeStatusService` é singleton com cache por
+     * requisição (1 query por jovem).
+     *
+     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, datas: array<int, array{rotulo: string, data: ?string}>}>
+     */
+    #[Computed(persist: true)]
+    public function conquistas(): array
     {
         $jovens = Jovem::query()
             ->when(
@@ -103,21 +151,14 @@ class EntregaDistintivos extends Page
                 ->get()]
         );
 
-        $entregasEspecialidade = EntregaDistintivo::query()
-            ->whereIn('jovem_id', $jovens->pluck('id'))
-            ->get()
-            ->keyBy(fn (EntregaDistintivo $entrega) => "{$entrega->jovem_id}:{$entrega->especialidade_distintivo_id}");
-
-        $entregasEtapa = EntregaEtapa::query()
-            ->whereIn('jovem_id', $jovens->pluck('id'))
-            ->get()
-            ->keyBy(fn (EntregaEtapa $entrega) => "{$entrega->jovem_id}:{$entrega->etapa}");
-
         $statusService = app(EspecialidadeStatusService::class);
+        $progressoService = app(StatusProgressaoService::class);
         $etapaService = app(EtapaProgressaoService::class);
         $linhas = [];
 
         foreach ($jovens as $jovem) {
+            $dadosJovem = ['id' => $jovem->id, 'nome' => $jovem->nome, 'ramo' => $jovem->ramoAtual->nome];
+
             foreach ($especialidadesPorRamo[$jovem->ramo_atual_id] ?? [] as $especialidade) {
                 $status = $statusService->statusEspecialidade($jovem, $especialidade);
 
@@ -125,20 +166,17 @@ class EntregaDistintivos extends Page
                     continue;
                 }
 
-                $entrega = $entregasEspecialidade["{$jovem->id}:{$especialidade->id}"] ?? null;
-
-                if (! $this->mostrarEntregues && $entrega?->entregue_em) {
-                    continue;
-                }
-
                 $linhas[] = [
-                    'jovem' => $jovem,
+                    'jovem' => $dadosJovem,
                     'origem' => 'especialidade',
                     'chave' => (string) $especialidade->id,
                     'tipo_label' => $especialidade->tipo,
                     'titulo' => $especialidade->nome,
                     'nivel_atingido' => $status['nivel_atingido'],
-                    'entrega' => $entrega,
+                    'datas' => array_map(
+                        fn (array $conquista) => ['rotulo' => $conquista['rotulo'], 'data' => $conquista['data']?->format('d/m/Y')],
+                        $progressoService->datasConquistaEspecialidade($jovem, $especialidade),
+                    ),
                 ];
             }
 
@@ -147,20 +185,14 @@ class EntregaDistintivos extends Page
                     continue;
                 }
 
-                $entrega = $entregasEtapa["{$jovem->id}:{$marco['label']}"] ?? null;
-
-                if (! $this->mostrarEntregues && $entrega?->entregue_em) {
-                    continue;
-                }
-
                 $linhas[] = [
-                    'jovem' => $jovem,
+                    'jovem' => $dadosJovem,
                     'origem' => 'etapa',
                     'chave' => $marco['label'],
                     'tipo_label' => ucfirst($marco['tipo']),
                     'titulo' => $marco['label'],
                     'nivel_atingido' => null,
-                    'entrega' => $entrega,
+                    'datas' => [['rotulo' => 'Alcançada', 'data' => $marco['data_alcancado']?->format('d/m/Y')]],
                 ];
             }
         }

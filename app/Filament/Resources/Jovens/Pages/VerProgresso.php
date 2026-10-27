@@ -47,6 +47,15 @@ class VerProgresso extends Page
     public string $buscaInsignias = '';
 
     /**
+     * Filtro pela situação da Especialidade/Insígnia inteira (não dos itens,
+     * ao contrário de {@see $filtroStatusItens}): 'todos'|'pendente'|'parcial'|
+     * 'nivel1'|'nivel2'|'concluido' — ver {@see especialidadePassaFiltroSituacao()}.
+     */
+    public string $filtroSituacaoEspecialidades = 'todos';
+
+    public string $filtroSituacaoInsignias = 'todos';
+
+    /**
      * 'todos'|'pendente'|'concluido' — filtro por status aplicado aos itens
      * de todas as abas (Novo, Especialidades, Insígnias e Antigo) ao mesmo
      * tempo, pra o chefe conseguir ver só o que falta (ou só o que já foi
@@ -108,9 +117,54 @@ class VerProgresso extends Page
     public function getEspecialidadesFiltradas(): Collection
     {
         return $this->filtrarPorBusca(
-            $this->getEspecialidadesDisponiveis()->where('tipo', 'Especialidade'),
+            $this->getEspecialidadesDisponiveis()
+                ->where('tipo', 'Especialidade')
+                ->filter(fn (EspecialidadeDistintivo $especialidade) => $this->especialidadePassaFiltroSituacao($especialidade, $this->filtroSituacaoEspecialidades)),
             $this->buscaEspecialidades,
         );
+    }
+
+    /**
+     * Opções do filtro de situação exibidas acima da lista. "Concluída"
+     * só aparece quando existe alguma Especialidade sem níveis (a que tem
+     * níveis é filtrada por Nível 1/Nível 2); Insígnia nunca tem níveis.
+     *
+     * @return array<string, string>
+     */
+    public function opcoesFiltroSituacao(string $tipo): array
+    {
+        $opcoes = ['todos' => 'Todos', 'pendente' => 'Pendente', 'parcial' => 'Parcial'];
+
+        if ($tipo === 'Insígnia') {
+            return $opcoes + ['concluido' => 'Concluída'];
+        }
+
+        $opcoes += ['nivel1' => 'Nível 1', 'nivel2' => 'Nível 2'];
+
+        $haSemNiveis = $this->getEspecialidadesDisponiveis()
+            ->where('tipo', 'Especialidade')
+            ->contains(fn (EspecialidadeDistintivo $especialidade) => $this->statusEspecialidade($especialidade)['nivel_atingido'] === null);
+
+        return $haSemNiveis ? $opcoes + ['concluido' => 'Concluída'] : $opcoes;
+    }
+
+    public function especialidadePassaFiltroSituacao(EspecialidadeDistintivo $especialidade, string $filtro): bool
+    {
+        if ($filtro === 'todos') {
+            return true;
+        }
+
+        $status = $this->statusEspecialidade($especialidade);
+
+        return match ($filtro) {
+            'pendente' => $status['status'] === 'Pendente',
+            'parcial' => $status['status'] === 'Parcial',
+            'nivel1' => $status['nivel_atingido'] === 1,
+            'nivel2' => $status['nivel_atingido'] === 2,
+            // Sem níveis: concluída de vez. Com níveis, quem usa Nível 1/2 não passa por aqui.
+            'concluido' => $status['nivel_atingido'] === null && $status['status'] === 'Concluído',
+            default => true,
+        };
     }
 
     /**
@@ -119,7 +173,9 @@ class VerProgresso extends Page
     public function getInsigniasFiltradas(): Collection
     {
         return $this->filtrarPorBusca(
-            $this->getEspecialidadesDisponiveis()->where('tipo', 'Insígnia'),
+            $this->getEspecialidadesDisponiveis()
+                ->where('tipo', 'Insígnia')
+                ->filter(fn (EspecialidadeDistintivo $especialidade) => $this->especialidadePassaFiltroSituacao($especialidade, $this->filtroSituacaoInsignias)),
             $this->buscaInsignias,
         );
     }

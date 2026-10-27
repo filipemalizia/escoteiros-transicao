@@ -174,6 +174,14 @@ trait ExibeProgressoDoJovem
     }
 
     /**
+     * @return array<int, array{rotulo: string, data: ?Carbon}>
+     */
+    public function datasConquistaEspecialidade(EspecialidadeDistintivo $especialidade): array
+    {
+        return app(StatusProgressaoService::class)->datasConquistaEspecialidade($this->jovem(), $especialidade);
+    }
+
+    /**
      * Data de conclusão de uma Especialidade/Insígnia de estrutura
      * `atividades_temas` — null se ainda não concluída.
      */
