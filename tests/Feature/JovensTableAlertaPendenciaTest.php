@@ -1,5 +1,7 @@
 <?php
 
+use App\Filament\Resources\Jovens\JovemResource;
+use App\Filament\Resources\Jovens\Pages\EditJovem;
 use App\Filament\Resources\Jovens\Pages\ListJovens;
 use App\Models\BlocoNovo;
 use App\Models\EixoNovo;
@@ -131,4 +133,13 @@ it('marca o aviso de pedido para desmarcar quero fazer, sem confundir com avalia
     expect((bool) $registros->firstWhere('id', $jovem->id)->tem_pedido_desmarcar_novo)->toBeTrue()
         ->and((bool) $registros->firstWhere('id', $jovem->id)->tem_pendencia_novo)->toBeFalse()
         ->and((bool) $registros->firstWhere('id', $outro->id)->tem_pedido_desmarcar_novo)->toBeFalse();
+});
+
+it('mostra na edicao do jovem um botao que leva a tela de progressao dele', function () {
+    $jovem = Jovem::create(['nome' => 'Para Editar', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+    $this->actingAs($this->admin);
+
+    Livewire::test(EditJovem::class, ['record' => $jovem->getKey()])
+        ->assertActionVisible('verProgresso')
+        ->assertActionHasUrl('verProgresso', JovemResource::getUrl('progresso', ['record' => $jovem]));
 });
