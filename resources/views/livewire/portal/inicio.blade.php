@@ -11,6 +11,14 @@
 @endphp
 
 <div>
+    @php
+        $acolhida = $this->getAcolhida();
+        $promessaRealizada = $jovem->promessaRealizada();
+        // Enquanto a Promessa não é registrada, a acolhida é o que o jovem novo
+        // precisa fazer primeiro: sobe pro topo, acima do progresso.
+        $acolhidaNoTopo = $acolhida['resumo']['total'] > 0 && ! $promessaRealizada;
+    @endphp
+
     <div class="flex items-start justify-between gap-4">
         <div>
             <h1 class="text-xl font-bold text-gray-950 dark:text-white">Olá, {{ $jovem->primeiroNome() }}</h1>
@@ -33,6 +41,10 @@
             </button>
         </div>
     </div>
+
+    @if ($acolhidaNoTopo)
+        @include('livewire.portal.partials.acolhida', ['acolhida' => $acolhida, 'promessaRealizada' => $promessaRealizada])
+    @endif
 
     <div class="mt-6 rounded-xl border border-gray-200 p-4 dark:border-white/10">
         <div class="text-sm text-gray-500 dark:text-gray-400">Progresso</div>
@@ -81,6 +93,44 @@
             </button>
         @endif
     </div>
+
+    @if ($acolhida['resumo']['total'] > 0 && ! $acolhidaNoTopo)
+        @include('livewire.portal.partials.acolhida', ['acolhida' => $acolhida, 'promessaRealizada' => $promessaRealizada])
+    @endif
+
+    <x-progresso.modal
+        :show="(bool) $enviandoAcolhidaOrdem"
+        heading="Enviar para avaliação"
+        wire-close-action="fecharEnvioAcolhida"
+    >
+        @if ($enviandoAcolhidaOrdem)
+            <p class="mb-3 text-sm text-gray-700 dark:text-gray-200">{{ $this->getTextoItemParaEnviarAcolhida() }}</p>
+
+            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Observação (opcional)</label>
+            <textarea
+                wire:model="observacoesAcolhida.{{ $enviandoAcolhidaOrdem }}"
+                rows="3"
+                placeholder="Algo que ajude o chefe a avaliar..."
+                class="w-full rounded-lg border-gray-300 text-sm placeholder:text-gray-400 focus:border-gray-500 focus:ring-gray-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+            ></textarea>
+
+            <div class="mt-4 flex justify-end gap-2">
+                <button type="button" wire:click="fecharEnvioAcolhida" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-white/5">
+                    Cancelar
+                </button>
+                <button
+                    type="button"
+                    wire:click="enviarAcolhida"
+                    wire:loading.attr="disabled"
+                    wire:target="enviarAcolhida"
+                    class="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:cursor-wait disabled:opacity-60"
+                >
+                    <span wire:loading.remove wire:target="enviarAcolhida">Confirmar envio</span>
+                    <span wire:loading wire:target="enviarAcolhida">Enviando...</span>
+                </button>
+            </div>
+        @endif
+    </x-progresso.modal>
 
     <x-progresso.modal :show="$modalConquistasAberto" heading="Novidades!" wire-close-action="fecharModalConquistas">
         <ul class="space-y-3">

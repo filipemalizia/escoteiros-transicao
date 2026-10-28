@@ -1,5 +1,7 @@
 <?php
 
+use App\Filament\Resources\Jovens\JovemResource;
+use App\Filament\Resources\Jovens\Pages\EditJovem;
 use App\Filament\Resources\Jovens\Pages\ListJovens;
 use App\Models\BlocoNovo;
 use App\Models\EixoNovo;
@@ -8,6 +10,7 @@ use App\Models\EspecialidadeDistintivo;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoAcolhida;
 use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
@@ -115,4 +118,40 @@ it('marca o alerta quando a pendencia vem de um requisito de especialidade', fun
         ->firstWhere('id', $jovem->id);
 
     expect($registro->tem_pendencia_especialidade)->toBeTrue();
+});
+
+it('marca o aviso de pedido para desmarcar quero fazer, sem confundir com avaliacao pendente', function () {
+    $jovem = Jovem::create(['nome' => 'Pediu Desmarcar', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+    $outro = Jovem::create(['nome' => 'Sem Pedido', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+
+    ProgressoNovo::create(['jovem_id' => $jovem->id, 'item_novo_id' => $this->item->id, 'marcado_para_fazer' => true, 'marcado_para_fazer_em' => now()->subDays(3), 'desmarcar_solicitado_em' => now()]);
+    ProgressoNovo::create(['jovem_id' => $outro->id, 'item_novo_id' => $this->item->id, 'marcado_para_fazer' => true, 'marcado_para_fazer_em' => now()->subDays(3)]);
+
+    $this->actingAs($this->admin);
+
+    $registros = Livewire::test(ListJovens::class)->instance()->getTable()->getRecords();
+
+    expect((bool) $registros->firstWhere('id', $jovem->id)->tem_pedido_desmarcar_novo)->toBeTrue()
+        ->and((bool) $registros->firstWhere('id', $jovem->id)->tem_pendencia_novo)->toBeFalse()
+        ->and((bool) $registros->firstWhere('id', $outro->id)->tem_pedido_desmarcar_novo)->toBeFalse();
+});
+
+it('mostra na edicao do jovem um botao que leva a tela de progressao dele', function () {
+    $jovem = Jovem::create(['nome' => 'Para Editar', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+    $this->actingAs($this->admin);
+
+    Livewire::test(EditJovem::class, ['record' => $jovem->getKey()])
+        ->assertActionVisible('verProgresso')
+        ->assertActionHasUrl('verProgresso', JovemResource::getUrl('progresso', ['record' => $jovem]));
+});
+
+it('marca o alerta de avaliacao tambem para pedido pendente da acolhida', function () {
+    $jovem = Jovem::create(['nome' => 'Pedido Acolhida', 'data_nascimento' => '2010-01-01', 'ramo_atual_id' => $this->ramo->id, 'equipe_id' => $this->equipe->id]);
+    ProgressoAcolhida::create(['jovem_id' => $jovem->id, 'ramo_id' => $this->ramo->id, 'ordem' => 1, 'solicitado_pelo_jovem' => true, 'solicitado_em' => now()]);
+
+    $this->actingAs($this->admin);
+
+    $registro = Livewire::test(ListJovens::class)->instance()->getTable()->getRecords()->firstWhere('id', $jovem->id);
+
+    expect((bool) $registro->tem_pendencia_acolhida)->toBeTrue();
 });

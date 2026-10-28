@@ -197,6 +197,19 @@ class StatusProgressaoService
         $substitutivaConcluida = $substitutivas->contains($itemConcluido);
 
         $obrigatoriasSatisfeitas = $obrigatoriasNecessarias === 0 || $obrigatoriasConcluidas === $obrigatoriasNecessarias;
+
+        /**
+         * Pioneiro: não há mínimo de Ações Variáveis, o jovem decide pelo
+         * Projeto de Vida. O mínimo vira "tudo o que ele concluiu" e o que
+         * ele sinalizou como "quero fazer" e ainda não fez segura o bloco
+         * (ver {@see planejadasPendentesQueSeguramBloco()}).
+         */
+        $usaProjetoDeVida = $jovem->usaProjetoDeVida();
+
+        if ($usaProjetoDeVida) {
+            $variaveisNecessarias = $variaveisConcluidas;
+        }
+
         $variaveisSatisfeitas = $variaveisNecessarias === 0 || $variaveisConcluidas >= $variaveisNecessarias;
 
         /**
@@ -209,8 +222,13 @@ class StatusProgressaoService
          */
         $temAlgumItemAcionavel = $obrigatoriasNecessarias > 0 || $variaveis->isNotEmpty() || $substitutivas->isNotEmpty();
 
-        $concluido = $temAlgumItemAcionavel && $obrigatoriasSatisfeitas && ($variaveisSatisfeitas || $substitutivaConcluida);
         $algumConcluido = $obrigatoriasConcluidas > 0 || $variaveisConcluidas > 0 || $substitutivaConcluida;
+
+        // No Pioneiro o bloco só conclui com ao menos uma ação de fato
+        // concluída (senão um bloco sem Ação Fixa nasceria concluído).
+        $concluido = $usaProjetoDeVida
+            ? $algumConcluido && $obrigatoriasSatisfeitas && $this->planejadasPendentesQueSeguramBloco($jovem, $bloco, $itens, $itensPersonalizadosDoJovem) === 0
+            : $temAlgumItemAcionavel && $obrigatoriasSatisfeitas && ($variaveisSatisfeitas || $substitutivaConcluida);
 
         $status = match (true) {
             $concluido => 'Concluído',
@@ -228,6 +246,47 @@ class StatusProgressaoService
             'variaveis_concluidas_via_personalizado' => $variaveisConcluidasPersonalizadas,
             'substitutiva_concluida' => $substitutivaConcluida,
         ];
+    }
+
+    /**
+     * Itens que o pioneiro marcou como "quero fazer" e ainda não concluiu,
+     * e que por isso seguram a conclusão do bloco. Só seguram se foram
+     * marcados até o dia da última ação concluída do bloco: marcar algo
+     * depois que o bloco já estava concluído vira só um registro e não o
+     * reabre (mexeria na etapa e nas datas já alcançadas). Sem data de
+     * conclusão conhecida (ex.: tudo creditado por equivalência), segura.
+     *
+     * @param  Collection<int, ItemNovo>  $itens
+     * @param  Collection<int, ItemPersonalizado>  $itensPersonalizados
+     */
+    private function planejadasPendentesQueSeguramBloco(Jovem $jovem, BlocoNovo $bloco, Collection $itens, Collection $itensPersonalizados): int
+    {
+        $datasNovos = $this->datasItensNovosConcluidos($jovem);
+        $datasPersonalizados = $this->datasItensPersonalizadosConcluidos($jovem);
+
+        $dataBase = $itens->toBase()->map(fn (ItemNovo $item) => $datasNovos[$item->id] ?? null)
+            ->merge($itensPersonalizados->toBase()->map(fn (ItemPersonalizado $item) => $datasPersonalizados[$item->id] ?? null))
+            ->filter()
+            ->max();
+
+        $marcacoes = ProgressoNovo::query()
+            ->where('jovem_id', $jovem->id)
+            ->whereIn('item_novo_id', $itens->pluck('id'))
+            ->where('marcado_para_fazer', true)
+            ->where('concluido', false)
+            ->pluck('marcado_para_fazer_em')
+            ->merge(
+                ProgressoPersonalizado::query()
+                    ->where('jovem_id', $jovem->id)
+                    ->whereIn('item_personalizado_id', $itensPersonalizados->pluck('id'))
+                    ->where('marcado_para_fazer', true)
+                    ->where('concluido', false)
+                    ->pluck('marcado_para_fazer_em')
+            );
+
+        return $marcacoes
+            ->filter(fn (?Carbon $marcadoEm) => $dataBase === null || $marcadoEm === null || $marcadoEm->toDateString() <= Carbon::parse($dataBase)->toDateString())
+            ->count();
     }
 
     /**
@@ -515,6 +574,35 @@ class StatusProgressaoService
     }
 
     /**
+     * Datas de conquista pra exibir ao chefe: uma entrada por nível já
+     * atingido (estrutura `itens_niveis`) ou uma só "Concluída" (estrutura
+     * `atividades_temas`/Insígnia). Vazio se nada foi conquistado ainda.
+     *
+     * @return array<int, array{rotulo: string, data: ?Carbon}>
+     */
+    public function datasConquistaEspecialidade(Jovem $jovem, EspecialidadeDistintivo $especialidade): array
+    {
+        $status = $this->statusEspecialidade($jovem, $especialidade);
+
+        if ($status['nivel_atingido'] !== null) {
+            return collect([1, 2])
+                ->filter(fn (int $nivel) => $status['nivel_atingido'] >= $nivel)
+                ->map(fn (int $nivel) => [
+                    'rotulo' => "Nível {$nivel}",
+                    'data' => $this->dataNivelEspecialidade($jovem, $especialidade, $nivel),
+                ])
+                ->values()
+                ->all();
+        }
+
+        if ($status['status'] !== 'Concluído') {
+            return [];
+        }
+
+        return [['rotulo' => 'Concluída', 'data' => $this->dataConclusaoEspecialidade($jovem, $especialidade)]];
+    }
+
+    /**
      * @return array<int, Carbon>
      */
     private function datasItensEspecialidadeConcluidos(Jovem $jovem): array
@@ -723,7 +811,8 @@ class StatusProgressaoService
     {
         return ProgressoNovo::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
             + ProgressoPersonalizado::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
-            + ProgressoEspecialidade::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count();
+            + ProgressoEspecialidade::query()->where('jovem_id', $jovem->id)->where('solicitado_pelo_jovem', true)->where('concluido', false)->count()
+            + app(AcolhidaService::class)->contagemAguardandoAvaliacao($jovem);
     }
 
     public function contagemMarcadosParaFazer(Jovem $jovem): int

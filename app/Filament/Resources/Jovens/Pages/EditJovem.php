@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Jovens\Pages;
 use App\Filament\Resources\Jovens\Concerns\InteractsWithRequisitosComplementares;
 use App\Filament\Resources\Jovens\JovemResource;
 use App\Services\EtapaProgressaoService;
+use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
@@ -17,6 +18,11 @@ class EditJovem extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('verProgresso')
+                ->label('Ver progressão')
+                ->icon('heroicon-o-chart-bar')
+                ->color('gray')
+                ->url(fn () => JovemResource::getUrl('progresso', ['record' => $this->record])),
             DeleteAction::make(),
         ];
     }

@@ -47,6 +47,18 @@
                 </x-slot:acoes>
             @endif
 
+            @php $datasConquista = $this->datasConquistaEspecialidade($especialidade); @endphp
+            @if (! empty($datasConquista))
+                <div class="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                    @foreach ($datasConquista as $conquista)
+                        <span>
+                            <span class="font-semibold">{{ $conquista['rotulo'] }}</span>
+                            {{ $conquista['data'] ? 'em '.$conquista['data']->format('d/m/Y') : '(sem data)' }}
+                        </span>
+                    @endforeach
+                </div>
+            @endif
+
             @foreach ($especialidade->grupos as $grupo)
                 @continue($grupo->itens->isEmpty())
                 <div class="mb-3">

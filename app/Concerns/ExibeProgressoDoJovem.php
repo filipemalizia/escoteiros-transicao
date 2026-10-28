@@ -13,10 +13,12 @@ use App\Models\ItemAntigo;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoAcolhida;
 use App\Models\ProgressoAntigo;
 use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
+use App\Services\AcolhidaService;
 use App\Services\EquivalenciaCreditoService;
 use App\Services\EtapaProgressaoService;
 use App\Services\ImagemDataUriService;
@@ -171,6 +173,14 @@ trait ExibeProgressoDoJovem
     public function dataNivelEspecialidade(EspecialidadeDistintivo $especialidade, int $nivel): ?Carbon
     {
         return app(StatusProgressaoService::class)->dataNivelEspecialidade($this->jovem(), $especialidade, $nivel);
+    }
+
+    /**
+     * @return array<int, array{rotulo: string, data: ?Carbon}>
+     */
+    public function datasConquistaEspecialidade(EspecialidadeDistintivo $especialidade): array
+    {
+        return app(StatusProgressaoService::class)->datasConquistaEspecialidade($this->jovem(), $especialidade);
     }
 
     /**
@@ -643,11 +653,51 @@ trait ExibeProgressoDoJovem
             ...$this->itensNovosAguardandoRevisao(),
             ...$this->itensPersonalizadosAguardandoRevisao(),
             ...$this->itensEspecialidadeAguardandoRevisao(),
+            ...$this->itensAcolhidaAguardandoRevisao(),
         ];
 
         usort($itens, fn (array $a, array $b) => $b['solicitado_em'] <=> $a['solicitado_em']);
 
         return $itens;
+    }
+
+    /**
+     * Itens do Período de Acolhida do jovem, o progresso de cada um (por
+     * ordem) e o resumo "x de N" pra seção exibida acima das abas.
+     *
+     * @return array{itens: array<int, string>, progresso: \Illuminate\Support\Collection<int, ProgressoAcolhida>, resumo: array{total: int, concluidos: int, percentual: int, completo: bool}}
+     */
+    public function getAcolhida(): array
+    {
+        $jovem = $this->jovem();
+        $service = app(AcolhidaService::class);
+
+        return [
+            'itens' => $service->itensDoRamo($jovem->ramoAtual?->nome),
+            'progresso' => $service->progressoDoJovem($jovem),
+            'resumo' => $service->resumo($jovem),
+        ];
+    }
+
+    /**
+     * @return array<int, array{tipo: string, texto: string, contexto: string, observacao: ?string, solicitado_em: Carbon}>
+     */
+    private function itensAcolhidaAguardandoRevisao(): array
+    {
+        $jovem = $this->jovem();
+        $textos = app(AcolhidaService::class)->itensDoRamo($jovem->ramoAtual?->nome);
+
+        return app(AcolhidaService::class)->progressoDoJovem($jovem)
+            ->filter(fn (ProgressoAcolhida $progresso) => $progresso->solicitado_pelo_jovem && ! $progresso->concluido && isset($textos[$progresso->ordem]))
+            ->map(fn (ProgressoAcolhida $progresso) => [
+                'tipo' => 'acolhida',
+                'texto' => $textos[$progresso->ordem],
+                'contexto' => 'Período de Acolhida',
+                'observacao' => $progresso->observacao_jovem,
+                'solicitado_em' => $progresso->solicitado_em,
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -755,6 +805,8 @@ trait ExibeProgressoDoJovem
                 'item_id' => $progresso->item_novo_id,
                 'texto' => $progresso->itemNovo->descricao,
                 'contexto' => "{$progresso->itemNovo->bloco->titulo} ({$progresso->itemNovo->bloco->eixo->nome})",
+                'desmarcar_solicitado' => $progresso->desmarcarFoiSolicitado(),
+                'exige_confirmacao' => $progresso->exigeConfirmacaoParaDesmarcar(),
                 'solicitado' => $progresso->solicitado_pelo_jovem,
                 'marcado_para_fazer_em' => $progresso->marcado_para_fazer_em,
                 'data_alvo' => $progresso->data_alvo,
@@ -779,6 +831,8 @@ trait ExibeProgressoDoJovem
                 'item_id' => $progresso->item_personalizado_id,
                 'texto' => $progresso->itemPersonalizado->descricao,
                 'contexto' => "{$progresso->itemPersonalizado->bloco->titulo} ({$progresso->itemPersonalizado->bloco->eixo->nome})",
+                'desmarcar_solicitado' => $progresso->desmarcarFoiSolicitado(),
+                'exige_confirmacao' => $progresso->exigeConfirmacaoParaDesmarcar(),
                 'solicitado' => $progresso->solicitado_pelo_jovem,
                 'marcado_para_fazer_em' => $progresso->marcado_para_fazer_em,
                 'data_alvo' => $progresso->data_alvo,

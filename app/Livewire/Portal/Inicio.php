@@ -4,6 +4,8 @@ namespace App\Livewire\Portal;
 
 use App\Concerns\ExibeProgressoDoJovem;
 use App\Concerns\Portal\AutenticaJovemNoPortal;
+use App\Models\ProgressoAcolhida;
+use App\Services\AcolhidaService;
 use App\Services\Portal\SessaoJovemService;
 use Illuminate\Contracts\View\View;
 use Livewire\Component;
@@ -16,6 +18,15 @@ class Inicio extends Component
     public bool $modalEtapaAberto = false;
 
     public bool $modalConquistasAberto = false;
+
+    /**
+     * Item do Período de Acolhida (pela ordem na lista do ramo) cujo modal
+     * "Enviar para avaliação" está aberto, e as observações já digitadas.
+     */
+    public ?int $enviandoAcolhidaOrdem = null;
+
+    /** @var array<int, string> */
+    public array $observacoesAcolhida = [];
 
     /**
      * @var array<int, array{data: string, titulo: string, subtitulo: string, imagem_url: ?string, tipo: string}>
@@ -101,6 +112,62 @@ class Inicio extends Component
     public function fecharModalEtapa(): void
     {
         $this->modalEtapaAberto = false;
+    }
+
+    public function abrirEnvioAcolhida(int $ordem): void
+    {
+        $this->enviandoAcolhidaOrdem = $ordem;
+    }
+
+    public function fecharEnvioAcolhida(): void
+    {
+        $this->enviandoAcolhidaOrdem = null;
+    }
+
+    public function getTextoItemParaEnviarAcolhida(): ?string
+    {
+        return $this->enviandoAcolhidaOrdem
+            ? (app(AcolhidaService::class)->itensDoRamo($this->jovem()->ramoAtual?->nome)[$this->enviandoAcolhidaOrdem] ?? null)
+            : null;
+    }
+
+    /**
+     * Jovem "avisa" que cumpriu um item da acolhida: não marca como
+     * concluído direto, fica aguardando a confirmação de um chefe (mesmo
+     * fluxo dos itens de progressão).
+     */
+    public function enviarAcolhida(SessaoJovemService $sessao): void
+    {
+        if (! $sessao->sessaoValida()) {
+            $this->redirect(route('portal.login.mostrar'));
+
+            return;
+        }
+
+        $ordem = $this->enviandoAcolhidaOrdem;
+        $jovem = $this->jovem();
+
+        if ($ordem === null || ! isset(app(AcolhidaService::class)->itensDoRamo($jovem->ramoAtual?->nome)[$ordem])) {
+            $this->fecharEnvioAcolhida();
+
+            return;
+        }
+
+        $progresso = ProgressoAcolhida::query()->firstOrNew([
+            'jovem_id' => $jovem->id,
+            'ramo_id' => $jovem->ramo_atual_id,
+            'ordem' => $ordem,
+        ]);
+
+        if (! $progresso->concluido) {
+            $progresso->solicitado_pelo_jovem = true;
+            $progresso->solicitado_em = now();
+            $progresso->observacao_jovem = trim($this->observacoesAcolhida[$ordem] ?? '') ?: null;
+            $progresso->save();
+        }
+
+        unset($this->observacoesAcolhida[$ordem]);
+        $this->fecharEnvioAcolhida();
     }
 
     public function render(): View

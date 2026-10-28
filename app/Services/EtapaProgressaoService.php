@@ -45,16 +45,19 @@ class EtapaProgressaoService
 
     /**
      * Cortes de etapa do programa novo, por quantidade de Blocos concluídos
-     * (sempre 18 no total). Cada par é [quantidade_maxima_inclusive,
-     * nome_da_etapa] — a última etapa de cada ramo já bate exatamente nos
-     * 18 blocos (não sobra corte "a mais" pro Reconhecimento; ele exige os
-     * mesmos 18 blocos, só que com os requisitos complementares também).
+     * (sempre 18 no total), conforme as Ferramentas de Equivalência de cada
+     * ramo. Cada par é [quantidade_minima_inclusive, nome_da_etapa]: a etapa
+     * começa nessa quantidade e vai até o início da próxima (ex.: Lobinho
+     * Pata Tenra 0-3, Saltador 4-7, Rastreador 8-12, Caçador 13-18). A
+     * primeira etapa tem mínimo 0, ou seja, já nasce alcançada. O
+     * Reconhecimento é um marco à parte, exigindo os 18 blocos e os
+     * requisitos complementares.
      */
     protected const CORTES_ETAPA_NOVO = [
-        'Lobinho' => [[4, 'Pata Tenra'], [8, 'Saltador'], [13, 'Rastreador'], [18, 'Caçador']],
-        'Escoteiro' => [[4, 'Pistas'], [8, 'Trilha'], [13, 'Rumo'], [18, 'Travessia']],
-        'Sênior' => [[6, 'Escalada'], [12, 'Conquista'], [18, 'Azimute']],
-        'Pioneiro' => [[6, 'Descoberta'], [12, 'Destino'], [18, 'Horizonte']],
+        'Lobinho' => [[0, 'Pata Tenra'], [4, 'Saltador'], [8, 'Rastreador'], [13, 'Caçador']],
+        'Escoteiro' => [[0, 'Pistas'], [4, 'Trilha'], [8, 'Rumo'], [13, 'Travessia']],
+        'Sênior' => [[0, 'Escalada'], [6, 'Conquista'], [12, 'Azimute']],
+        'Pioneiro' => [[0, 'Descoberta'], [6, 'Destino'], [12, 'Horizonte']],
     ];
 
     protected const NOMES_RECONHECIMENTO = [
@@ -423,23 +426,25 @@ class EtapaProgressaoService
 
         $concluidos = $this->statusService->percentualNovo($jovem)['concluidos'];
 
-        foreach ($cortes as [$maximo, $label]) {
-            if ($concluidos <= $maximo) {
-                return $label;
+        $etapaAtual = $cortes[0][1];
+
+        foreach ($cortes as [$minimo, $label]) {
+            if ($concluidos >= $minimo) {
+                $etapaAtual = $label;
             }
         }
 
-        return end($cortes)[1];
+        return $etapaAtual;
     }
 
     /**
      * Trilha completa de progressão do Programa Novo pra tela Início: um
      * marco por Etapa do ramo (4 pra Lobinho/Escoteiro, 3 pra Sênior/
-     * Pioneiro — a última já bate exatamente nos 18 blocos) seguida por um
+     * Pioneiro; a primeira já nasce alcançada, com 0 blocos) seguida por um
      * marco final do Reconhecimento — o distintivo máximo do ramo, que só
      * fica "alcançado" quando `elegivelReconhecimentoNovo()` for true (os
-     * mesmos 18 blocos da última Etapa, E os requisitos complementares,
-     * não só o corte de blocos).
+     * 18 blocos E os requisitos complementares,
+     * não só a quantidade de blocos).
      *
      * `progresso` é o preenchimento (0.0-1.0) de cada distintivo — **não**
      * é relativo ao corte anterior, é `concluidos / corte_desse_marco`
@@ -452,8 +457,7 @@ class EtapaProgressaoService
      * distintivo mais distante mostra uma fração menor (mesmo numerador,
      * denominador maior), sempre com um número real, nunca inventado.
      *
-     * Pro Reconhecimento (cujo corte de blocos é sempre igual ao da última
-     * Etapa) o preenchimento é a média entre o progresso de blocos
+     * Pro Reconhecimento (cujo corte de blocos é sempre 18) o preenchimento é a média entre o progresso de blocos
      * (`concluidos/18`) e a fração de requisitos complementares
      * satisfeitos, senão o distintivo apareceria sempre 100% cheio assim
      * que a última Etapa fosse alcançada, mesmo com requisitos pendentes.
@@ -477,8 +481,8 @@ class EtapaProgressaoService
 
         $trilha = [];
 
-        foreach ($cortes as [$maximo, $label]) {
-            $alcancado = $concluidos >= $maximo;
+        foreach ($cortes as [$minimo, $label]) {
+            $alcancado = $concluidos >= $minimo;
 
             $trilha[] = [
                 'tipo' => 'etapa',
@@ -488,9 +492,9 @@ class EtapaProgressaoService
                 // alcançados - é a única situação em que o botão de compartilhar aparece.
                 'imagem_data_uri' => $alcancado ? $this->dataUriImagemEtapa($ramoNome, $label) : null,
                 'alcancado' => $alcancado,
-                'faltam' => max(0, $maximo - $concluidos),
-                'progresso' => min(1.0, $concluidos / $maximo),
-                'data_alcancado' => $alcancado ? $this->dataCorteEtapaNovo($jovem, $maximo) : null,
+                'faltam' => max(0, $minimo - $concluidos),
+                'progresso' => $minimo > 0 ? min(1.0, $concluidos / $minimo) : 1.0,
+                'data_alcancado' => $alcancado && $minimo > 0 ? $this->dataCorteEtapaNovo($jovem, $minimo) : null,
             ];
         }
 
@@ -509,12 +513,11 @@ class EtapaProgressaoService
             'data_alcancado' => $elegivelReconhecimento ? $this->dataCorteEtapaNovo($jovem, 18) : null,
         ];
 
-        $indiceAtual = collect($trilha)->search(fn (array $marco) => ! $marco['alcancado']);
+        // A etapa atual é a última já alcançada (a primeira nasce alcançada).
+        $indiceAtual = collect($trilha)->keys()->filter(fn (int $indice) => $trilha[$indice]['alcancado'])->last();
 
         foreach ($trilha as $indice => &$marco) {
-            $marco['atual'] = $indiceAtual === false
-                ? $indice === array_key_last($trilha)
-                : $indice === $indiceAtual;
+            $marco['atual'] = $indice === $indiceAtual;
         }
 
         unset($marco);

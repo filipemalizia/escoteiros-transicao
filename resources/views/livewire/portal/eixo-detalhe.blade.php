@@ -121,6 +121,8 @@
                                     @if (! $concluidoPersonalizado)
                                         <x-progresso.botao-quero-fazer
                                             :marcado="$queroFazerPersonalizado"
+                                            :exige-confirmacao="(bool) $registroPersonalizado?->exigeConfirmacaoParaDesmarcar()"
+                                            :pedido="(bool) $registroPersonalizado?->desmarcarFoiSolicitado()"
                                             wire-click="toggleQueroFazerPersonalizado({{ $itemPersonalizado->id }})"
                                         />
                                     @endif

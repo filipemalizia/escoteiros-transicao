@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\StatusProgressaoService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -12,10 +13,11 @@ class Jovem extends Model
 {
     protected $table = 'jovens';
 
-    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id', 'portal_visitado_em'];
+    protected $fillable = ['nome', 'registro', 'data_nascimento', 'ramo_atual_id', 'equipe_id', 'portal_visitado_em', 'data_promessa'];
 
     protected $casts = [
         'data_nascimento' => 'date',
+        'data_promessa' => 'date',
         'portal_visitado_em' => 'datetime',
     ];
 
@@ -33,7 +35,23 @@ class Jovem extends Model
             if ($jovem->isDirty('equipe_id') && $jovem->equipe_id) {
                 $jovem->ramo_atual_id = Equipe::find($jovem->equipe_id)?->ramo_id ?? $jovem->ramo_atual_id;
             }
+
+            // Guarda o ramo em que a Promessa foi registrada: ele decide se ela
+            // ainda vale depois que o jovem muda de ramo (ver promessaRealizada()).
+            if ($jovem->isDirty('data_promessa')) {
+                $jovem->promessa_ramo_id = $jovem->data_promessa ? $jovem->ramo_atual_id : null;
+            }
         });
+    }
+
+    /**
+     * No Ramo Pioneiro a conclusão do bloco segue o Projeto de Vida do
+     * jovem (o que ele marca como "quero fazer"), não um mínimo fixo de
+     * Ações Variáveis — ver {@see StatusProgressaoService}.
+     */
+    public function usaProjetoDeVida(): bool
+    {
+        return $this->ramoAtual?->nome === 'Pioneiro';
     }
 
     public function ramoAtual(): BelongsTo
@@ -108,6 +126,56 @@ class Jovem extends Model
     public function progressoNovo(): HasMany
     {
         return $this->hasMany(ProgressoNovo::class);
+    }
+
+    public function progressoAcolhida(): HasMany
+    {
+        return $this->hasMany(ProgressoAcolhida::class);
+    }
+
+    public function promessaRamo(): BelongsTo
+    {
+        return $this->belongsTo(Ramo::class, 'promessa_ramo_id');
+    }
+
+    /**
+     * A Promessa do Lobinho vale só pro Lobinho; a Promessa Escoteira vale
+     * pros ramos Escoteiro, Sênior e Pioneiro (e adultos voluntários).
+     * Ramo fora dessas regras conta como grupo próprio.
+     */
+    public static function grupoDePromessa(?string $ramoNome): ?string
+    {
+        return match ($ramoNome) {
+            'Lobinho' => 'Lobinho',
+            'Escoteiro', 'Sênior', 'Pioneiro' => 'Escoteira',
+            default => $ramoNome,
+        };
+    }
+
+    /**
+     * Nome da Promessa que vale pro ramo atual do jovem ("Lobinho" ou
+     * "Escoteira"), pros textos das telas.
+     */
+    public function nomeDaPromessaDoRamo(): ?string
+    {
+        return static::grupoDePromessa($this->ramoAtual?->nome);
+    }
+
+    /**
+     * Já fez a Promessa que vale pro ramo em que está agora. Só depois dela
+     * os distintivos podem ser entregues (a compra pode ser adiantada).
+     * Subir de Escoteiro pra Sênior ou Pioneiro mantém a Promessa Escoteira;
+     * sair do Lobinho exige registrar a Promessa Escoteira.
+     */
+    public function promessaRealizada(): bool
+    {
+        if ($this->data_promessa === null || $this->promessa_ramo_id === null) {
+            return false;
+        }
+
+        $grupoDaPromessa = static::grupoDePromessa($this->promessaRamo?->nome);
+
+        return $grupoDaPromessa !== null && $grupoDaPromessa === $this->nomeDaPromessaDoRamo();
     }
 
     public function requisitosComplementares(): HasMany

@@ -13,6 +13,7 @@
         'novo' => $avaliandoItemId ? ($progressoNovoMap[$avaliandoItemId] ?? null) : null,
         'personalizado' => $avaliandoItemId ? ($progressoPersonalizadoMap[$avaliandoItemId] ?? null) : null,
         'especialidade' => $avaliandoItemId ? ($progressoEspecialidadeMap[$avaliandoItemId] ?? null) : null,
+        'acolhida' => $itemParaAvaliar instanceof \App\Models\ProgressoAcolhida ? $itemParaAvaliar : null,
         default => null,
     };
     $percentualAntigo = $this->getPercentualAntigo();
@@ -54,6 +55,8 @@
             </div>
         </x-filament::section>
     </div>
+
+    @include('filament.resources.jovens.pages.partials.acolhida', ['acolhida' => $this->getAcolhida()])
 
     <x-filament::tabs label="Programa" class="mt-8">
         <x-filament::tabs.item
@@ -281,7 +284,9 @@
                                                         />
                                                         <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-700 dark:text-gray-200">
                                                             <x-filament::badge color="warning" size="sm">Personalizado</x-filament::badge>
-                                                            <x-progresso.indicador-quero-fazer :marcado="! $marcadoDiretoPersonalizado && (bool) ($registroPersonalizado?->marcado_para_fazer)" />
+                                                            @if (! $marcadoDiretoPersonalizado)
+                                                                <x-progresso.quero-fazer-admin :registro="$registroPersonalizado" tipo="personalizado" :item-id="$itemPersonalizado->id" />
+                                                            @endif
                                                             <span>{{ $itemPersonalizado->descricao }}</span>
                                                             @if ($solicitadoPersonalizado && ! $marcadoDiretoPersonalizado)
                                                                 <x-filament::badge color="warning" size="sm">
@@ -377,6 +382,22 @@
                     />
                 </x-filament::input.wrapper>
 
+                <div class="mb-4 inline-flex flex-wrap gap-1 rounded-lg border border-gray-300 p-0.5 dark:border-gray-600">
+                    @foreach ($this->opcoesFiltroSituacao('Especialidade') as $valorSituacao => $rotuloSituacao)
+                        <button
+                            type="button"
+                            wire:click="$set('filtroSituacaoEspecialidades', '{{ $valorSituacao }}')"
+                            @class([
+                                'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                                'bg-primary-600 text-white' => $filtroSituacaoEspecialidades === $valorSituacao,
+                                'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10' => $filtroSituacaoEspecialidades !== $valorSituacao,
+                            ])
+                        >
+                            {{ $rotuloSituacao }}
+                        </button>
+                    @endforeach
+                </div>
+
                 @include('filament.resources.jovens.pages.partials.especialidades-lista', [
                     'especialidades' => $especialidadesFiltradas,
                     'busca' => $buscaEspecialidades,
@@ -402,6 +423,22 @@
                         placeholder="Buscar Insígnia por nome, requisito ou item equivalente..."
                     />
                 </x-filament::input.wrapper>
+
+                <div class="mb-4 inline-flex flex-wrap gap-1 rounded-lg border border-gray-300 p-0.5 dark:border-gray-600">
+                    @foreach ($this->opcoesFiltroSituacao('Insígnia') as $valorSituacao => $rotuloSituacao)
+                        <button
+                            type="button"
+                            wire:click="$set('filtroSituacaoInsignias', '{{ $valorSituacao }}')"
+                            @class([
+                                'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                                'bg-primary-600 text-white' => $filtroSituacaoInsignias === $valorSituacao,
+                                'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/10' => $filtroSituacaoInsignias !== $valorSituacao,
+                            ])
+                        >
+                            {{ $rotuloSituacao }}
+                        </button>
+                    @endforeach
+                </div>
 
                 @include('filament.resources.jovens.pages.partials.especialidades-lista', [
                     'especialidades' => $insigniasFiltradas,

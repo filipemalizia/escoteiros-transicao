@@ -43,6 +43,8 @@
     @if (! $concluidoGeral)
         <x-progresso.botao-quero-fazer
             :marcado="$queroFazer"
+            :exige-confirmacao="(bool) $registro?->exigeConfirmacaoParaDesmarcar()"
+            :pedido="(bool) $registro?->desmarcarFoiSolicitado()"
             wire-click="toggleQueroFazerNovo({{ $item->id }})"
         />
     @endif

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Jovens\Tables;
 
+use App\Concerns\ControlaDesmarcacaoQueroFazer;
 use App\Filament\Resources\Jovens\JovemResource;
 use App\Models\Equipe;
 use App\Models\Jovem;
@@ -29,6 +30,16 @@ class JovensTable
         return $query->where('solicitado_pelo_jovem', true)->where('concluido', false);
     }
 
+    /**
+     * Pedido do pioneiro pra desmarcar um "quero fazer" (ver
+     * {@see ControlaDesmarcacaoQueroFazer}) que o chefe ainda
+     * não respondeu.
+     */
+    private static function comPedidoDesmarcar(Builder $query): Builder
+    {
+        return $query->whereNotNull('desmarcar_solicitado_em')->where('marcado_para_fazer', true)->where('concluido', false);
+    }
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -39,14 +50,23 @@ class JovensTable
                 'progressoNovo as tem_pendencia_novo' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoPersonalizado as tem_pendencia_personalizado' => fn (Builder $q) => self::comItemPendente($q),
                 'progressoEspecialidade as tem_pendencia_especialidade' => fn (Builder $q) => self::comItemPendente($q),
+                'progressoAcolhida as tem_pendencia_acolhida' => fn (Builder $q) => self::comItemPendente($q),
+                'progressoNovo as tem_pedido_desmarcar_novo' => fn (Builder $q) => self::comPedidoDesmarcar($q),
+                'progressoPersonalizado as tem_pedido_desmarcar_personalizado' => fn (Builder $q) => self::comPedidoDesmarcar($q),
             ]))
             ->columns([
                 IconColumn::make('pendencia_revisao')
                     ->label('')
-                    ->getStateUsing(fn (Jovem $record) => $record->tem_pendencia_antigo || $record->tem_pendencia_novo || $record->tem_pendencia_personalizado || $record->tem_pendencia_especialidade)
+                    ->getStateUsing(fn (Jovem $record) => $record->tem_pendencia_antigo || $record->tem_pendencia_novo || $record->tem_pendencia_personalizado || $record->tem_pendencia_especialidade || $record->tem_pendencia_acolhida)
                     ->icon(fn (bool $state) => $state ? Heroicon::OutlinedExclamationTriangle : null)
                     ->color('warning')
                     ->tooltip(fn (bool $state) => $state ? 'Possui itens aguardando avaliação' : null),
+                IconColumn::make('pedido_desmarcar')
+                    ->label('')
+                    ->getStateUsing(fn (Jovem $record) => $record->tem_pedido_desmarcar_novo || $record->tem_pedido_desmarcar_personalizado)
+                    ->icon(fn (bool $state) => $state ? Heroicon::OutlinedChatBubbleLeftEllipsis : null)
+                    ->color('info')
+                    ->tooltip(fn (bool $state) => $state ? "Pediu para desmarcar um 'quero fazer'" : null),
                 TextColumn::make('nome')
                     ->searchable(),
                 TextColumn::make('registro')

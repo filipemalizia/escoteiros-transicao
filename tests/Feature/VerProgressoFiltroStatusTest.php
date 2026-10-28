@@ -118,3 +118,38 @@ it('filtro pendente/concluido se aplica aos itens do programa antigo', function 
         ->assertDontSee('Item antigo pendente')
         ->assertSee('Item antigo concluido');
 });
+
+it('filtra especialidades pela situacao da especialidade inteira', function () {
+    $componente = Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()]);
+
+    expect($componente->instance()->getEspecialidadesFiltradas())->toHaveCount(1);
+
+    $componente->set('filtroSituacaoEspecialidades', 'parcial');
+    expect($componente->instance()->getEspecialidadesFiltradas())->toHaveCount(1);
+
+    $componente->set('filtroSituacaoEspecialidades', 'pendente');
+    expect($componente->instance()->getEspecialidadesFiltradas())->toHaveCount(0);
+
+    $componente->set('filtroSituacaoEspecialidades', 'nivel1');
+    expect($componente->instance()->getEspecialidadesFiltradas())->toHaveCount(0);
+});
+
+it('mostra a data de cada nivel atingido da especialidade na tela do chefe', function () {
+    $especialidade = EspecialidadeDistintivo::create(['nome' => 'Orientacao', 'tipo' => 'Especialidade', 'estrutura' => 'itens_niveis', 'minimo_nivel_1' => 1, 'minimo_nivel_2' => 2]);
+    $especialidade->eixosNovos()->attach(EixoNovo::first()->id);
+    $grupo = $especialidade->grupos()->create(['chave' => 'itens']);
+    $item1 = $grupo->itens()->create(['texto' => 'Item um']);
+    $item2 = $grupo->itens()->create(['texto' => 'Item dois']);
+    ProgressoEspecialidade::create(['jovem_id' => $this->jovem->id, 'especialidade_distintivo_item_id' => $item1->id, 'concluido' => true, 'data_conclusao' => '2026-03-10']);
+    ProgressoEspecialidade::create(['jovem_id' => $this->jovem->id, 'especialidade_distintivo_item_id' => $item2->id, 'concluido' => true, 'data_conclusao' => '2026-05-20']);
+
+    $componente = Livewire::test(VerProgresso::class, ['record' => $this->jovem->getKey()])
+        ->set('abaAtiva', 'especialidades')
+        ->assertSee('Nível 1')
+        ->assertSee('em 10/03/2026')
+        ->assertSee('Nível 2')
+        ->assertSee('em 20/05/2026');
+
+    $componente->set('filtroSituacaoEspecialidades', 'nivel2');
+    expect($componente->instance()->getEspecialidadesFiltradas()->pluck('nome')->all())->toBe(['Orientacao']);
+});

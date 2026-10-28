@@ -53,7 +53,9 @@
                         <x-progresso.botao-quero-fazer
                             marcado
                             :wire-click="$wireClickQueroFazer"
-                            confirm="Remover este item da sua lista de 'quero fazer'?"
+                            :exige-confirmacao="$item['exige_confirmacao'] ?? false"
+                            :pedido="$item['desmarcar_solicitado'] ?? false"
+                            :confirm="($item['exige_confirmacao'] ?? false) || ($item['desmarcar_solicitado'] ?? false) ? null : 'Remover este item da sua lista de \'quero fazer\'?'"
                         />
                     </div>
                 </li>

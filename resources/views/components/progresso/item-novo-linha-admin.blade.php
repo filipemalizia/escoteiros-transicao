@@ -28,7 +28,9 @@
             >
                 {{ $item->tipo_acao }}
             </x-filament::badge>
-            <x-progresso.indicador-quero-fazer :marcado="! $concluidoGeral && (bool) ($registro?->marcado_para_fazer)" />
+            @if (! $concluidoGeral)
+                <x-progresso.quero-fazer-admin :registro="$registro" tipo="novo" :item-id="$item->id" />
+            @endif
             <x-progresso.icone-modalidade :modalidade="$item->modalidade" />
             <span>{{ $item->descricao }}</span>
             @if ($item->especialidade)

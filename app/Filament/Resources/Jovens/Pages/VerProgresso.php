@@ -12,11 +12,14 @@ use App\Models\EspecialidadeDistintivoItem;
 use App\Models\ItemNovo;
 use App\Models\ItemPersonalizado;
 use App\Models\Jovem;
+use App\Models\ProgressoAcolhida;
 use App\Models\ProgressoAntigo;
 use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\ProgressoPersonalizado;
+use App\Services\AcolhidaService;
 use App\Services\EtapaProgressaoService;
+use App\Services\Portal\SessaoJovemService;
 use App\Services\StatusProgressaoService;
 use App\Support\Busca;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -47,6 +50,15 @@ class VerProgresso extends Page
     public string $buscaInsignias = '';
 
     /**
+     * Filtro pela situação da Especialidade/Insígnia inteira (não dos itens,
+     * ao contrário de {@see $filtroStatusItens}): 'todos'|'pendente'|'parcial'|
+     * 'nivel1'|'nivel2'|'concluido' — ver {@see especialidadePassaFiltroSituacao()}.
+     */
+    public string $filtroSituacaoEspecialidades = 'todos';
+
+    public string $filtroSituacaoInsignias = 'todos';
+
+    /**
      * 'todos'|'pendente'|'concluido' — filtro por status aplicado aos itens
      * de todas as abas (Novo, Especialidades, Insígnias e Antigo) ao mesmo
      * tempo, pra o chefe conseguir ver só o que falta (ou só o que já foi
@@ -72,6 +84,12 @@ class VerProgresso extends Page
      */
     public ?string $avaliandoTipo = null;
 
+    /**
+     * Data da Promessa em edição na seção de Acolhida (Y-m-d, vazio = sem
+     * Promessa) — ver {@see salvarDataPromessa()}.
+     */
+    public string $dataPromessa = '';
+
     public ?int $avaliandoItemId = null;
 
     /**
@@ -90,6 +108,8 @@ class VerProgresso extends Page
         $this->record = $this->resolveRecord($record);
 
         $this->authorizeAccess();
+
+        $this->dataPromessa = $this->getRecord()->data_promessa?->toDateString() ?? '';
     }
 
     protected function authorizeAccess(): void
@@ -108,9 +128,54 @@ class VerProgresso extends Page
     public function getEspecialidadesFiltradas(): Collection
     {
         return $this->filtrarPorBusca(
-            $this->getEspecialidadesDisponiveis()->where('tipo', 'Especialidade'),
+            $this->getEspecialidadesDisponiveis()
+                ->where('tipo', 'Especialidade')
+                ->filter(fn (EspecialidadeDistintivo $especialidade) => $this->especialidadePassaFiltroSituacao($especialidade, $this->filtroSituacaoEspecialidades)),
             $this->buscaEspecialidades,
         );
+    }
+
+    /**
+     * Opções do filtro de situação exibidas acima da lista. "Concluída"
+     * só aparece quando existe alguma Especialidade sem níveis (a que tem
+     * níveis é filtrada por Nível 1/Nível 2); Insígnia nunca tem níveis.
+     *
+     * @return array<string, string>
+     */
+    public function opcoesFiltroSituacao(string $tipo): array
+    {
+        $opcoes = ['todos' => 'Todos', 'pendente' => 'Pendente', 'parcial' => 'Parcial'];
+
+        if ($tipo === 'Insígnia') {
+            return $opcoes + ['concluido' => 'Concluída'];
+        }
+
+        $opcoes += ['nivel1' => 'Nível 1', 'nivel2' => 'Nível 2'];
+
+        $haSemNiveis = $this->getEspecialidadesDisponiveis()
+            ->where('tipo', 'Especialidade')
+            ->contains(fn (EspecialidadeDistintivo $especialidade) => $this->statusEspecialidade($especialidade)['nivel_atingido'] === null);
+
+        return $haSemNiveis ? $opcoes + ['concluido' => 'Concluída'] : $opcoes;
+    }
+
+    public function especialidadePassaFiltroSituacao(EspecialidadeDistintivo $especialidade, string $filtro): bool
+    {
+        if ($filtro === 'todos') {
+            return true;
+        }
+
+        $status = $this->statusEspecialidade($especialidade);
+
+        return match ($filtro) {
+            'pendente' => $status['status'] === 'Pendente',
+            'parcial' => $status['status'] === 'Parcial',
+            'nivel1' => $status['nivel_atingido'] === 1,
+            'nivel2' => $status['nivel_atingido'] === 2,
+            // Sem níveis: concluída de vez. Com níveis, quem usa Nível 1/2 não passa por aqui.
+            'concluido' => $status['nivel_atingido'] === null && $status['status'] === 'Concluído',
+            default => true,
+        };
     }
 
     /**
@@ -119,7 +184,9 @@ class VerProgresso extends Page
     public function getInsigniasFiltradas(): Collection
     {
         return $this->filtrarPorBusca(
-            $this->getEspecialidadesDisponiveis()->where('tipo', 'Insígnia'),
+            $this->getEspecialidadesDisponiveis()
+                ->where('tipo', 'Insígnia')
+                ->filter(fn (EspecialidadeDistintivo $especialidade) => $this->especialidadePassaFiltroSituacao($especialidade, $this->filtroSituacaoInsignias)),
             $this->buscaInsignias,
         );
     }
@@ -256,6 +323,19 @@ class VerProgresso extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('liberarAcessoPortal')
+                ->label('Liberar acesso ao portal')
+                ->icon('heroicon-o-lock-open')
+                ->color('warning')
+                ->visible(fn () => app(SessaoJovemService::class)->loginBloqueado($this->getRecord()))
+                ->requiresConfirmation()
+                ->modalHeading('Liberar acesso ao portal')
+                ->modalDescription('O acesso deste jovem foi bloqueado por várias tentativas erradas de registro e data de nascimento. Libere só depois de confirmar que é o próprio jovem.')
+                ->action(function () {
+                    app(SessaoJovemService::class)->liberarLogin($this->getRecord());
+
+                    Notification::make()->title('Acesso ao portal liberado')->success()->send();
+                }),
             Action::make('buscarTudo')
                 ->label('Buscar em tudo')
                 ->icon('heroicon-o-magnifying-glass')
@@ -626,6 +706,134 @@ class VerProgresso extends Page
         );
     }
 
+    /**
+     * O chefe tira o "quero fazer" de um item (a pedido do jovem ou por
+     * decisão própria, depois de conversar com ele). Só Programa Novo e
+     * itens personalizados: é o que entra no cálculo do bloco do Pioneiro.
+     */
+    public function desmarcarQueroFazer(string $tipo, int $itemId): void
+    {
+        $progresso = $this->progressoQueroFazer($tipo, $itemId);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $progresso->marcado_para_fazer = false;
+        $progresso->marcado_para_fazer_em = null;
+        $progresso->save();
+
+        app(StatusProgressaoService::class)->limparCache();
+    }
+
+    /**
+     * O chefe mantém o item marcado: só limpa o pedido, o jovem pode pedir
+     * de novo quando quiser.
+     */
+    public function recusarPedidoDesmarcar(string $tipo, int $itemId): void
+    {
+        $progresso = $this->progressoQueroFazer($tipo, $itemId);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $progresso->desmarcar_solicitado_em = null;
+        $progresso->save();
+    }
+
+    private function progressoQueroFazer(string $tipo, int $itemId): ProgressoNovo|ProgressoPersonalizado|null
+    {
+        $jovemId = $this->getRecord()->id;
+
+        return match ($tipo) {
+            'novo' => ProgressoNovo::where('jovem_id', $jovemId)->where('item_novo_id', $itemId)->first(),
+            'personalizado' => ProgressoPersonalizado::where('jovem_id', $jovemId)->where('item_personalizado_id', $itemId)->first(),
+            default => null,
+        };
+    }
+
+    private function progressoAcolhidaDoItem(int $ordem): ?ProgressoAcolhida
+    {
+        $jovem = $this->getRecord();
+
+        if (! isset(app(AcolhidaService::class)->itensDoRamo($jovem->ramoAtual?->nome)[$ordem])) {
+            return null;
+        }
+
+        return ProgressoAcolhida::query()->firstOrNew([
+            'jovem_id' => $jovem->id,
+            'ramo_id' => $jovem->ramo_atual_id,
+            'ordem' => $ordem,
+        ]);
+    }
+
+    public function toggleAcolhida(int $ordem): void
+    {
+        $progresso = $this->progressoAcolhidaDoItem($ordem);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $concluido = ! $progresso->concluido;
+
+        $progresso->concluido = $concluido;
+        $progresso->data_conclusao = $concluido ? Carbon::today() : null;
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+    }
+
+    public function confirmarAcolhida(int $ordem): void
+    {
+        $progresso = $this->progressoAcolhidaDoItem($ordem);
+
+        if (! $progresso) {
+            return;
+        }
+
+        $progresso->concluido = true;
+        $progresso->data_conclusao = Carbon::today();
+        $progresso->registrado_por_id = auth()->id();
+        $progresso->solicitado_pelo_jovem = false;
+        $progresso->solicitado_em = null;
+        $progresso->save();
+
+        $this->fecharAvaliacao();
+    }
+
+    public function rejeitarAcolhida(int $ordem): void
+    {
+        ProgressoAcolhida::query()
+            ->where('jovem_id', $this->getRecord()->id)
+            ->where('ramo_id', $this->getRecord()->ramo_atual_id)
+            ->where('ordem', $ordem)
+            ->update(['solicitado_pelo_jovem' => false, 'solicitado_em' => null]);
+
+        $this->fecharAvaliacao();
+    }
+
+    /**
+     * Registra (ou limpa, se vazia) a data da Promessa do jovem no ramo
+     * atual. Os distintivos só podem ser entregues depois dela.
+     */
+    public function salvarDataPromessa(): void
+    {
+        $this->validate(['dataPromessa' => ['nullable', 'date', 'before_or_equal:today']], [
+            'dataPromessa.date' => 'Informe uma data válida.',
+            'dataPromessa.before_or_equal' => 'A data da Promessa não pode ser no futuro.',
+        ]);
+
+        $this->getRecord()->update(['data_promessa' => blank($this->dataPromessa) ? null : $this->dataPromessa]);
+
+        Notification::make()
+            ->title(blank($this->dataPromessa) ? 'Promessa removida' : 'Promessa registrada')
+            ->success()
+            ->send();
+    }
+
     public function rejeitarEspecialidade(int $especialidadeDistintivoItemId): void
     {
         ProgressoEspecialidade::query()
@@ -653,7 +861,7 @@ class VerProgresso extends Page
      * no momento — usado pelo modal pra mostrar o texto do item sem a view
      * precisar saber o tipo.
      */
-    public function getItemParaAvaliar(): ItemNovo|ItemPersonalizado|EspecialidadeDistintivoItem|null
+    public function getItemParaAvaliar(): ItemNovo|ItemPersonalizado|EspecialidadeDistintivoItem|ProgressoAcolhida|null
     {
         if (! $this->avaliandoTipo || ! $this->avaliandoItemId) {
             return null;
@@ -663,6 +871,7 @@ class VerProgresso extends Page
             'novo' => ItemNovo::find($this->avaliandoItemId),
             'personalizado' => ItemPersonalizado::find($this->avaliandoItemId),
             'especialidade' => EspecialidadeDistintivoItem::find($this->avaliandoItemId),
+            'acolhida' => $this->progressoAcolhidaDoItem($this->avaliandoItemId),
             default => null,
         };
     }
@@ -679,6 +888,7 @@ class VerProgresso extends Page
             'novo' => $this->confirmarNovo($this->avaliandoItemId),
             'personalizado' => $this->confirmarItemPersonalizado($this->avaliandoItemId),
             'especialidade' => $this->confirmarEspecialidade($this->avaliandoItemId),
+            'acolhida' => $this->confirmarAcolhida($this->avaliandoItemId),
             default => null,
         };
     }
@@ -689,6 +899,7 @@ class VerProgresso extends Page
             'novo' => $this->rejeitarNovo($this->avaliandoItemId),
             'personalizado' => $this->rejeitarItemPersonalizado($this->avaliandoItemId),
             'especialidade' => $this->rejeitarEspecialidade($this->avaliandoItemId),
+            'acolhida' => $this->rejeitarAcolhida($this->avaliandoItemId),
             default => null,
         };
     }
@@ -711,7 +922,7 @@ class VerProgresso extends Page
      * data de conclusão pra algo ainda pendente — pra isso já existe o
      * prazo do "quero fazer").
      */
-    private function progressoParaEdicaoDeData(): ProgressoAntigo|ProgressoNovo|ProgressoPersonalizado|ProgressoEspecialidade|null
+    private function progressoParaEdicaoDeData(): ProgressoAntigo|ProgressoNovo|ProgressoPersonalizado|ProgressoEspecialidade|ProgressoAcolhida|null
     {
         $jovemId = $this->getRecord()->id;
 
@@ -720,6 +931,7 @@ class VerProgresso extends Page
             'novo' => ProgressoNovo::where('jovem_id', $jovemId)->where('item_novo_id', $this->editandoDataItemId)->first(),
             'personalizado' => ProgressoPersonalizado::where('jovem_id', $jovemId)->where('item_personalizado_id', $this->editandoDataItemId)->first(),
             'especialidade' => ProgressoEspecialidade::where('jovem_id', $jovemId)->where('especialidade_distintivo_item_id', $this->editandoDataItemId)->first(),
+            'acolhida' => ProgressoAcolhida::where('jovem_id', $jovemId)->where('ramo_id', $this->getRecord()->ramo_atual_id)->where('ordem', $this->editandoDataItemId)->first(),
             default => null,
         };
     }

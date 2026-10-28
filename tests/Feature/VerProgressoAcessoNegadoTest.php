@@ -5,7 +5,6 @@ use App\Models\Equipe;
 use App\Models\Jovem;
 use App\Models\Ramo;
 use App\Models\User;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 
@@ -29,8 +28,11 @@ it('bloqueia o acesso ao progresso de um jovem de outra equipe', function () {
     $lider->equipes()->attach($this->equipeB);
     $this->actingAs($lider);
 
-    Livewire::test(VerProgresso::class, ['record' => $this->jovemDaEquipeA->getKey()]);
-})->throws(ModelNotFoundException::class);
+    // O jovem de outra equipe nem é encontrado na consulta do recurso (404,
+    // não 403, pra não revelar que ele existe).
+    Livewire::test(VerProgresso::class, ['record' => $this->jovemDaEquipeA->getKey()])
+        ->assertNotFound();
+});
 
 it('permite o acesso ao progresso de um jovem da propria equipe', function () {
     $lider = User::factory()->create();
