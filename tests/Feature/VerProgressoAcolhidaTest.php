@@ -1,6 +1,8 @@
 <?php
 
+use App\Filament\Resources\Jovens\JovemResource;
 use App\Filament\Resources\Jovens\Pages\VerProgresso;
+use App\Models\Equipe;
 use App\Models\Jovem;
 use App\Models\ProgressoAcolhida;
 use App\Models\Ramo;
@@ -143,4 +145,23 @@ it('a acolhida nao bloqueia a marcacao de progresso de quem ainda nao fez a Prom
 
     paginaDoJovem($this->jovem)->call('toggleAcolhida', 1)->assertOk();
     expect(app(AcolhidaService::class)->resumo($this->jovem)['concluidos'])->toBe(1);
+});
+
+it('a tela de progressao tem um botao que leva a edicao do jovem', function () {
+    paginaDoJovem($this->jovem)
+        ->assertActionVisible('editarJovem')
+        ->assertActionHasUrl('editarJovem', JovemResource::getUrl('edit', ['record' => $this->jovem]));
+});
+
+it('o chefe da equipe do jovem tambem ve o botao de editar', function () {
+    $equipe = Equipe::create(['ramo_id' => $this->ramo->id, 'nome' => 'Equipe A']);
+    $this->jovem->update(['equipe_id' => $equipe->id]);
+
+    $chefe = User::factory()->create();
+    $chefe->equipes()->attach($equipe);
+    $this->actingAs($chefe);
+
+    paginaDoJovem($this->jovem)->assertActionVisible('editarJovem');
+
+    expect(JovemResource::canEdit($this->jovem))->toBeTrue();
 });
