@@ -536,10 +536,7 @@ class EtapaProgressaoService
      */
     public function dataCorteEtapaNovo(Jovem $jovem, int $corte): ?Carbon
     {
-        $blocos = BlocoNovo::query()
-            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
-            ->with('itens')
-            ->get();
+        $blocos = $this->statusService->blocosNovosDoRamo((int) $jovem->ramo_atual_id);
 
         $datas = $blocos
             ->map(fn (BlocoNovo $bloco) => $this->statusService->dataConclusaoBloco($jovem, $bloco))

@@ -3,14 +3,27 @@
         <p class="text-sm text-gray-500 dark:text-gray-400">
             Distintivos (Especialidade, Insígnia, Etapa e Reconhecimento do Programa Novo) já conquistados, aguardando compra e entrega física.
         </p>
-        <label class="flex shrink-0 items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-            <input
-                type="checkbox"
-                wire:model.live="mostrarEntregues"
-                class="rounded border-gray-300 accent-primary-600 dark:border-gray-600"
-            />
-            Mostrar já entregues
-        </label>
+        <div class="flex shrink-0 items-center gap-4">
+            <button
+                type="button"
+                wire:click="atualizarLista"
+                wire:loading.attr="disabled"
+                wire:target="atualizarLista"
+                class="text-sm text-primary-600 hover:underline disabled:cursor-wait disabled:opacity-60 dark:text-primary-400"
+                title="Recalcula as conquistas (use depois de mexer no progresso de alguém em outra aba)"
+            >
+                <span wire:loading.remove wire:target="atualizarLista">Atualizar lista</span>
+                <span wire:loading wire:target="atualizarLista">Atualizando...</span>
+            </button>
+            <label class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                <input
+                    type="checkbox"
+                    wire:model.live="mostrarEntregues"
+                    class="rounded border-gray-300 accent-primary-600 dark:border-gray-600"
+                />
+                Mostrar já entregues
+            </label>
+        </div>
     </div>
 
     <div class="mb-4 flex flex-wrap items-end gap-4">

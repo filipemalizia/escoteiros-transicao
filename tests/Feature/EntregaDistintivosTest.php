@@ -13,6 +13,8 @@ use App\Models\ProgressoEspecialidade;
 use App\Models\ProgressoNovo;
 use App\Models\Ramo;
 use App\Models\User;
+use App\Services\EspecialidadeStatusService;
+use App\Services\StatusProgressaoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Livewire\Livewire;
@@ -264,6 +266,18 @@ it('mostra a data de conclusao da especialidade na tela de entrega', function ()
     Livewire::test(EntregaDistintivos::class)->assertSee('Concluída em 15/04/2026');
 });
 
+/**
+ * Em producao cada clique e uma requisicao nova, com os servicos de calculo
+ * (singletons) zerados. Nos testes eles sobrevivem entre as chamadas e
+ * escondem consultas repetidas, entao o cache dos servicos e esvaziado antes
+ * de medir.
+ */
+function simularRequisicaoNova(): void
+{
+    app(StatusProgressaoService::class)->limparCache();
+    app(EspecialidadeStatusService::class)->limparCache();
+}
+
 it('nao recalcula as conquistas a cada clique, so relê as entregas', function () {
     ProgressoEspecialidade::create([
         'jovem_id' => $this->jovem->id,
@@ -274,11 +288,33 @@ it('nao recalcula as conquistas a cada clique, so relê as entregas', function (
 
     $componente = Livewire::test(EntregaDistintivos::class);
 
+    simularRequisicaoNova();
     DB::enableQueryLog();
     $componente->call('marcarEntregueHoje', 'especialidade', $this->jovem->id, (string) $this->especialidade->id);
     $consultas = collect(DB::getQueryLog())->pluck('query')->implode("\n");
 
-    expect($consultas)->not->toContain('progresso_especialidade');
+    expect($consultas)->not->toContain('progresso_especialidade')
+        ->and($consultas)->not->toContain('progresso_novo');
+});
+
+it('atualizar a lista recalcula as conquistas', function () {
+    $componente = Livewire::test(EntregaDistintivos::class);
+    expect(somenteEspecialidades($componente->instance()->getPendencias()))->toHaveCount(0);
+
+    ProgressoEspecialidade::create([
+        'jovem_id' => $this->jovem->id,
+        'especialidade_distintivo_item_id' => $this->item->id,
+        'concluido' => true,
+        'data_conclusao' => today(),
+    ]);
+    simularRequisicaoNova();
+
+    // As conquistas ficam guardadas durante a visita: ainda nao aparece.
+    $componente->call('$refresh');
+    expect(somenteEspecialidades($componente->instance()->getPendencias()))->toHaveCount(0);
+
+    $componente->call('atualizarLista');
+    expect(somenteEspecialidades($componente->instance()->getPendencias()))->toHaveCount(1);
 });
 
 it('usa o horario de Brasilia: marcar entregue as 22h30 ainda e o mesmo dia, nao o dia seguinte em UTC', function () {
@@ -475,6 +511,7 @@ describe('Filtros de ramo e equipe', function () {
     it('filtrar nao recalcula as conquistas', function () {
         $componente = Livewire::test(EntregaDistintivos::class);
 
+        simularRequisicaoNova();
         DB::enableQueryLog();
         $componente->set('filtroRamoId', (string) $this->ramoPioneiro->id);
         $consultas = collect(DB::getQueryLog())->pluck('query')->implode("\n");
