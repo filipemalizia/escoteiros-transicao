@@ -9,6 +9,7 @@ use App\Models\ItemNovo;
 use App\Models\Jovem;
 use App\Models\ProgressoAntigo;
 use App\Models\ProgressoNovo;
+use Illuminate\Support\Collection;
 
 /**
  * Calcula se um item (antigo ou novo) conta como concluído para um jovem,
@@ -45,6 +46,32 @@ class EquivalenciaCreditoService
     /** @var array<string, bool> */
     private array $cacheNovo = [];
 
+    /**
+     * Ids dos itens já marcados como concluídos direto, por jovem — 1 consulta
+     * por jovem em vez de 1 por item (a Entrega de Distintivos calcula todos
+     * os jovens de uma vez).
+     *
+     * @var array<int, array<int, true>>
+     */
+    private array $concluidosDiretoNovo = [];
+
+    /** @var array<int, array<int, true>> */
+    private array $concluidosDiretoAntigo = [];
+
+    /**
+     * Equivalências cadastradas por item: não dependem do jovem, então são
+     * lidas uma vez por requisição e reaproveitadas por todos os jovens.
+     *
+     * @var array<int, Collection<int, Equivalencia>>
+     */
+    private array $equivalenciasPorItemNovo = [];
+
+    /** @var array<int, Collection<int, Equivalencia>> */
+    private array $equivalenciasPorItemAntigo = [];
+
+    /** @var array<int, Collection<int, EquivalenciaEspecialidade>> */
+    private array $equivalenciasEspecialidadePorItemNovo = [];
+
     public function __construct(
         private readonly EspecialidadeStatusService $especialidadeStatusService = new EspecialidadeStatusService,
     ) {}
@@ -60,7 +87,38 @@ class EquivalenciaCreditoService
     {
         $this->cacheAntigo = [];
         $this->cacheNovo = [];
+        $this->concluidosDiretoNovo = [];
+        $this->concluidosDiretoAntigo = [];
+        $this->equivalenciasPorItemNovo = [];
+        $this->equivalenciasPorItemAntigo = [];
+        $this->equivalenciasEspecialidadePorItemNovo = [];
         $this->especialidadeStatusService->limparCache();
+    }
+
+    /**
+     * @return array<int, true>
+     */
+    private function itensAntigosConcluidosDireto(Jovem $jovem): array
+    {
+        return $this->concluidosDiretoAntigo[$jovem->id] ??= ProgressoAntigo::query()
+            ->where('jovem_id', $jovem->id)
+            ->where('concluido', true)
+            ->pluck('item_antigo_id')
+            ->mapWithKeys(fn ($id) => [$id => true])
+            ->all();
+    }
+
+    /**
+     * @return array<int, true>
+     */
+    private function itensNovosConcluidosDireto(Jovem $jovem): array
+    {
+        return $this->concluidosDiretoNovo[$jovem->id] ??= ProgressoNovo::query()
+            ->where('jovem_id', $jovem->id)
+            ->where('concluido', true)
+            ->pluck('item_novo_id')
+            ->mapWithKeys(fn ($id) => [$id => true])
+            ->all();
     }
 
     /**
@@ -88,17 +146,13 @@ class EquivalenciaCreditoService
             return false;
         }
 
-        $marcadoDireto = ProgressoAntigo::query()
-            ->where('jovem_id', $jovem->id)
-            ->where('item_antigo_id', $item->id)
-            ->where('concluido', true)
-            ->exists();
+        $marcadoDireto = isset($this->itensAntigosConcluidosDireto($jovem)[$item->id]);
 
         if ($marcadoDireto) {
             return true;
         }
 
-        $equivalencias = Equivalencia::query()
+        $equivalencias = $this->equivalenciasPorItemAntigo[$item->id] ??= Equivalencia::query()
             ->where('item_antigo_id', $item->id)
             ->get();
 
@@ -146,11 +200,7 @@ class EquivalenciaCreditoService
             return false;
         }
 
-        $marcadoDireto = ProgressoNovo::query()
-            ->where('jovem_id', $jovem->id)
-            ->where('item_novo_id', $item->id)
-            ->where('concluido', true)
-            ->exists();
+        $marcadoDireto = isset($this->itensNovosConcluidosDireto($jovem)[$item->id]);
 
         if ($marcadoDireto) {
             return true;
@@ -160,7 +210,7 @@ class EquivalenciaCreditoService
             return true;
         }
 
-        $equivalencias = Equivalencia::query()
+        $equivalencias = $this->equivalenciasPorItemNovo[$item->id] ??= Equivalencia::query()
             ->where('item_novo_id', $item->id)
             ->get();
 
@@ -192,10 +242,10 @@ class EquivalenciaCreditoService
      */
     private function itemNovoConcluidoViaEspecialidade(Jovem $jovem, ItemNovo $item): bool
     {
-        return EquivalenciaEspecialidade::query()
+        return ($this->equivalenciasEspecialidadePorItemNovo[$item->id] ??= EquivalenciaEspecialidade::query()
             ->where('item_novo_id', $item->id)
             ->with('especialidadeDistintivo')
-            ->get()
+            ->get())
             ->filter(fn (EquivalenciaEspecialidade $equivalencia) => $equivalencia->especialidadeDistintivo !== null)
             ->contains(function (EquivalenciaEspecialidade $equivalencia) use ($jovem) {
                 $status = $this->especialidadeStatusService->statusEspecialidade($jovem, $equivalencia->especialidadeDistintivo);

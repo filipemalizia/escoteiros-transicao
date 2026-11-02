@@ -107,7 +107,7 @@ class EntregaDistintivos extends Page
      */
     public function getPendencias(): array
     {
-        $conquistas = $this->conquistas();
+        $conquistas = $this->conquistas;
 
         $conquistas = array_values(array_filter($conquistas, fn (array $conquista) => $this->passaNosFiltros($conquista['jovem'])));
 
@@ -241,6 +241,16 @@ class EntregaDistintivos extends Page
         }
 
         return $linhas;
+    }
+
+    /**
+     * Descarta as conquistas guardadas e recalcula tudo na próxima exibição,
+     * pra quem mexeu no progresso de alguém em outra aba e quer ver o
+     * resultado sem recarregar a página.
+     */
+    public function atualizarLista(): void
+    {
+        unset($this->conquistas);
     }
 
     /**

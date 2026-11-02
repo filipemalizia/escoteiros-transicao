@@ -45,6 +45,30 @@ class StatusProgressaoService
     /** @var array<int, array<int, Carbon>> */
     private array $cacheDatasItensPersonalizadosConcluidos = [];
 
+    /**
+     * Blocos do Programa Novo por ramo (com itens, eixo e equivalências de
+     * bloco já carregados): não dependem do jovem, então são lidos uma vez
+     * por requisição, não uma vez por jovem.
+     *
+     * @var array<int, Collection<int, BlocoNovo>>
+     */
+    private array $cacheBlocosNovosDoRamo = [];
+
+    /**
+     * "Quero fazer" ainda não concluído de cada jovem (Novo e personalizado),
+     * item => quando foi marcado: 2 consultas por jovem, não 2 por bloco.
+     *
+     * @var array<int, array{novo: array<int, ?Carbon>, personalizado: array<int, ?Carbon>}>
+     */
+    private array $cacheMarcacoesPendentesDoJovem = [];
+
+    /**
+     * Itens personalizados de cada jovem, agrupados pelo id do bloco.
+     *
+     * @var array<int, Collection<int, Collection<int, ItemPersonalizado>>>
+     */
+    private array $cacheItensPersonalizadosDoJovem = [];
+
     public function __construct(
         private readonly EquivalenciaCreditoService $creditoService = new EquivalenciaCreditoService,
         private readonly EspecialidadeStatusService $especialidadeStatusService = new EspecialidadeStatusService,
@@ -62,6 +86,9 @@ class StatusProgressaoService
         $this->cacheDatasItensEspecialidadeConcluidos = [];
         $this->cacheDatasItensNovosConcluidos = [];
         $this->cacheDatasItensPersonalizadosConcluidos = [];
+        $this->cacheBlocosNovosDoRamo = [];
+        $this->cacheItensPersonalizadosDoJovem = [];
+        $this->cacheMarcacoesPendentesDoJovem = [];
         $this->creditoService->limparCache();
         $this->especialidadeStatusService->limparCache();
     }
@@ -262,20 +289,30 @@ class StatusProgressaoService
      */
     private function marcacoesPendentesDoBloco(Jovem $jovem, Collection $itens, Collection $itensPersonalizados): Collection
     {
-        return ProgressoNovo::query()
-            ->where('jovem_id', $jovem->id)
-            ->whereIn('item_novo_id', $itens->pluck('id'))
-            ->where('marcado_para_fazer', true)
-            ->where('concluido', false)
-            ->pluck('marcado_para_fazer_em')
+        $marcacoes = $this->cacheMarcacoesPendentesDoJovem[$jovem->id] ??= [
+            'novo' => ProgressoNovo::query()
+                ->where('jovem_id', $jovem->id)
+                ->where('marcado_para_fazer', true)
+                ->where('concluido', false)
+                ->pluck('marcado_para_fazer_em', 'item_novo_id')
+                ->all(),
+            'personalizado' => ProgressoPersonalizado::query()
+                ->where('jovem_id', $jovem->id)
+                ->where('marcado_para_fazer', true)
+                ->where('concluido', false)
+                ->pluck('marcado_para_fazer_em', 'item_personalizado_id')
+                ->all(),
+        ];
+
+        return collect($itens->pluck('id')->all())
+            ->filter(fn ($id) => array_key_exists($id, $marcacoes['novo']))
+            ->map(fn ($id) => $marcacoes['novo'][$id])
             ->merge(
-                ProgressoPersonalizado::query()
-                    ->where('jovem_id', $jovem->id)
-                    ->whereIn('item_personalizado_id', $itensPersonalizados->pluck('id'))
-                    ->where('marcado_para_fazer', true)
-                    ->where('concluido', false)
-                    ->pluck('marcado_para_fazer_em')
-            );
+                collect($itensPersonalizados->pluck('id')->all())
+                    ->filter(fn ($id) => array_key_exists($id, $marcacoes['personalizado']))
+                    ->map(fn ($id) => $marcacoes['personalizado'][$id])
+            )
+            ->values();
     }
 
     /**
@@ -355,10 +392,7 @@ class StatusProgressaoService
      */
     public function percentualNovo(Jovem $jovem): array
     {
-        $blocos = BlocoNovo::query()
-            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
-            ->with('itens')
-            ->get();
+        $blocos = $this->blocosNovosDoRamo((int) $jovem->ramo_atual_id);
 
         $total = $blocos->count();
         $concluidos = $blocos->filter(
@@ -383,10 +417,7 @@ class StatusProgressaoService
      */
     public function percentualGamificadoNovo(Jovem $jovem): array
     {
-        $blocos = BlocoNovo::query()
-            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
-            ->with('itens')
-            ->get();
+        $blocos = $this->blocosNovosDoRamo((int) $jovem->ramo_atual_id);
 
         if ($blocos->isEmpty()) {
             return ['percentual' => 0.0];
@@ -665,10 +696,7 @@ class StatusProgressaoService
      */
     public function resumoNovo(Jovem $jovem): array
     {
-        $blocos = BlocoNovo::query()
-            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
-            ->with('itens')
-            ->get();
+        $blocos = $this->blocosNovosDoRamo((int) $jovem->ramo_atual_id);
 
         $obrigatoriasTotal = 0;
         $obrigatoriasConcluidas = 0;
@@ -704,10 +732,7 @@ class StatusProgressaoService
      */
     public function pendenciasNovo(Jovem $jovem): array
     {
-        $blocos = BlocoNovo::query()
-            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $jovem->ramo_atual_id))
-            ->with(['itens', 'eixo'])
-            ->get();
+        $blocos = $this->blocosNovosDoRamo((int) $jovem->ramo_atual_id);
 
         $pendencias = [];
 
@@ -793,19 +818,32 @@ class StatusProgressaoService
      */
     private function itensPersonalizadosDoBloco(Jovem $jovem, BlocoNovo $bloco): Collection
     {
-        return ItemPersonalizado::query()
-            ->where('bloco_novo_id', $bloco->id)
+        $porBloco = $this->cacheItensPersonalizadosDoJovem[$jovem->id] ??= ItemPersonalizado::query()
             ->whereHas('jovens', fn ($query) => $query->where('jovens.id', $jovem->id))
-            ->get();
+            ->get()
+            ->groupBy('bloco_novo_id');
+
+        return $porBloco->get($bloco->id, collect());
     }
 
     private function itemPersonalizadoConcluido(Jovem $jovem, ItemPersonalizado $item): bool
     {
-        return ProgressoPersonalizado::query()
-            ->where('jovem_id', $jovem->id)
-            ->where('item_personalizado_id', $item->id)
-            ->where('concluido', true)
-            ->exists();
+        return isset($this->datasItensPersonalizadosConcluidos($jovem)[$item->id]);
+    }
+
+    /**
+     * Blocos do Programa Novo do ramo, com tudo o que o cálculo de status
+     * precisa já carregado (itens, eixo e crédito de bloco por
+     * equivalência), em cache pra a requisição inteira.
+     *
+     * @return Collection<int, BlocoNovo>
+     */
+    public function blocosNovosDoRamo(int $ramoId): Collection
+    {
+        return $this->cacheBlocosNovosDoRamo[$ramoId] ??= BlocoNovo::query()
+            ->whereHas('eixo', fn ($query) => $query->where('ramo_id', $ramoId))
+            ->with(['itens', 'eixo', 'equivalenciasBloco.itemAntigo'])
+            ->get();
     }
 
     /**
