@@ -13,6 +13,43 @@
         </label>
     </div>
 
+    <div class="mb-4 flex flex-wrap items-end gap-4">
+        <div>
+            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Ramo</label>
+            <select
+                wire:model.live="filtroRamoId"
+                class="rounded-lg border-gray-300 text-sm focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+            >
+                <option value="">Todos os ramos</option>
+                @foreach ($this->getRamosParaFiltro() as $ramoFiltro)
+                    <option value="{{ $ramoFiltro->id }}">{{ $ramoFiltro->nome }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div>
+            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Equipe</label>
+            <select
+                wire:model.live="filtroEquipeId"
+                class="rounded-lg border-gray-300 text-sm focus:border-primary-500 focus:ring-primary-500 dark:border-gray-600 dark:bg-white/5 dark:text-white"
+            >
+                <option value="">Todas as equipes</option>
+                <option value="sem">Sem equipe</option>
+                @foreach ($this->getEquipesParaFiltro() as $equipeFiltro)
+                    <option value="{{ $equipeFiltro->id }}">{{ $equipeFiltro->nome }}</option>
+                @endforeach
+            </select>
+        </div>
+        @if ($filtroRamoId !== '' || $filtroEquipeId !== '')
+            <button
+                type="button"
+                wire:click="$set('filtroRamoId', ''); $set('filtroEquipeId', '')"
+                class="pb-2 text-sm text-primary-600 hover:underline dark:text-primary-400"
+            >
+                Limpar filtros
+            </button>
+        @endif
+    </div>
+
     @php
         $pendencias = $this->getPendencias();
         $aguardandoPromessa = collect($pendencias)->filter(fn ($linha) => ! $linha['promessa_realizada'] && ! $linha['entrega']?->entregue_em);

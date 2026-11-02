@@ -323,6 +323,12 @@ class VerProgresso extends Page
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('editarJovem')
+                ->label('Editar jovem')
+                ->icon('heroicon-o-pencil-square')
+                ->color('gray')
+                ->visible(fn () => static::getResource()::canEdit($this->getRecord()))
+                ->url(fn () => static::getResource()::getUrl('edit', ['record' => $this->getRecord()])),
             Action::make('liberarAcessoPortal')
                 ->label('Liberar acesso ao portal')
                 ->icon('heroicon-o-lock-open')

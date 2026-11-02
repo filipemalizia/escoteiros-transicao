@@ -103,7 +103,7 @@ class StatusProgressaoService
     }
 
     /**
-     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, variaveis_concluidas_via_personalizado: int, substitutiva_concluida: bool}
+     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, variaveis_concluidas_via_personalizado: int, substitutiva_concluida: bool, planejadas_pendentes: int}
      */
     public function statusBloco(Jovem $jovem, BlocoNovo $bloco): array
     {
@@ -144,7 +144,7 @@ class StatusProgressaoService
     }
 
     /**
-     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, variaveis_concluidas_via_personalizado: int, substitutiva_concluida: bool}
+     * @return array{status: string, obrigatorias_necessarias: int, obrigatorias_concluidas: int, variaveis_necessarias: int, variaveis_concluidas: int, variaveis_concluidas_via_bloco: int, variaveis_concluidas_via_personalizado: int, substitutiva_concluida: bool, planejadas_pendentes: int}
      */
     private function calcularStatusBloco(Jovem $jovem, BlocoNovo $bloco): array
     {
@@ -205,6 +205,9 @@ class StatusProgressaoService
          * (ver {@see planejadasPendentesQueSeguramBloco()}).
          */
         $usaProjetoDeVida = $jovem->usaProjetoDeVida();
+        $marcacoesPendentes = $usaProjetoDeVida
+            ? $this->marcacoesPendentesDoBloco($jovem, $itens, $itensPersonalizadosDoJovem)
+            : collect();
 
         if ($usaProjetoDeVida) {
             $variaveisNecessarias = $variaveisConcluidas;
@@ -227,7 +230,7 @@ class StatusProgressaoService
         // No Pioneiro o bloco só conclui com ao menos uma ação de fato
         // concluída (senão um bloco sem Ação Fixa nasceria concluído).
         $concluido = $usaProjetoDeVida
-            ? $algumConcluido && $obrigatoriasSatisfeitas && $this->planejadasPendentesQueSeguramBloco($jovem, $bloco, $itens, $itensPersonalizadosDoJovem) === 0
+            ? $algumConcluido && $obrigatoriasSatisfeitas && $this->planejadasPendentesQueSeguramBloco($jovem, $marcacoesPendentes, $itens, $itensPersonalizadosDoJovem) === 0
             : $temAlgumItemAcionavel && $obrigatoriasSatisfeitas && ($variaveisSatisfeitas || $substitutivaConcluida);
 
         $status = match (true) {
@@ -245,31 +248,21 @@ class StatusProgressaoService
             'variaveis_concluidas_via_bloco' => $variaveisConcluidasViaBloco,
             'variaveis_concluidas_via_personalizado' => $variaveisConcluidasPersonalizadas,
             'substitutiva_concluida' => $substitutivaConcluida,
+            'planejadas_pendentes' => $marcacoesPendentes->count(),
         ];
     }
 
     /**
-     * Itens que o pioneiro marcou como "quero fazer" e ainda não concluiu,
-     * e que por isso seguram a conclusão do bloco. Só seguram se foram
-     * marcados até o dia da última ação concluída do bloco: marcar algo
-     * depois que o bloco já estava concluído vira só um registro e não o
-     * reabre (mexeria na etapa e nas datas já alcançadas). Sem data de
-     * conclusão conhecida (ex.: tudo creditado por equivalência), segura.
+     * Quando (`marcado_para_fazer_em`) o pioneiro marcou como "quero fazer"
+     * cada item do bloco (Novo e personalizado) que ainda não concluiu.
      *
      * @param  Collection<int, ItemNovo>  $itens
      * @param  Collection<int, ItemPersonalizado>  $itensPersonalizados
+     * @return Collection<int, ?Carbon>
      */
-    private function planejadasPendentesQueSeguramBloco(Jovem $jovem, BlocoNovo $bloco, Collection $itens, Collection $itensPersonalizados): int
+    private function marcacoesPendentesDoBloco(Jovem $jovem, Collection $itens, Collection $itensPersonalizados): Collection
     {
-        $datasNovos = $this->datasItensNovosConcluidos($jovem);
-        $datasPersonalizados = $this->datasItensPersonalizadosConcluidos($jovem);
-
-        $dataBase = $itens->toBase()->map(fn (ItemNovo $item) => $datasNovos[$item->id] ?? null)
-            ->merge($itensPersonalizados->toBase()->map(fn (ItemPersonalizado $item) => $datasPersonalizados[$item->id] ?? null))
-            ->filter()
-            ->max();
-
-        $marcacoes = ProgressoNovo::query()
+        return ProgressoNovo::query()
             ->where('jovem_id', $jovem->id)
             ->whereIn('item_novo_id', $itens->pluck('id'))
             ->where('marcado_para_fazer', true)
@@ -283,6 +276,28 @@ class StatusProgressaoService
                     ->where('concluido', false)
                     ->pluck('marcado_para_fazer_em')
             );
+    }
+
+    /**
+     * Das marcações pendentes, quantas seguram a conclusão do bloco. Só
+     * seguram se foram marcadas até o dia da última ação concluída do bloco:
+     * marcar algo depois que o bloco já estava concluído vira só um registro
+     * e não o reabre (mexeria na etapa e nas datas já alcançadas). Sem data
+     * de conclusão conhecida (ex.: tudo creditado por equivalência), segura.
+     *
+     * @param  Collection<int, ?Carbon>  $marcacoes
+     * @param  Collection<int, ItemNovo>  $itens
+     * @param  Collection<int, ItemPersonalizado>  $itensPersonalizados
+     */
+    private function planejadasPendentesQueSeguramBloco(Jovem $jovem, Collection $marcacoes, Collection $itens, Collection $itensPersonalizados): int
+    {
+        $datasNovos = $this->datasItensNovosConcluidos($jovem);
+        $datasPersonalizados = $this->datasItensPersonalizadosConcluidos($jovem);
+
+        $dataBase = $itens->toBase()->map(fn (ItemNovo $item) => $datasNovos[$item->id] ?? null)
+            ->merge($itensPersonalizados->toBase()->map(fn (ItemPersonalizado $item) => $datasPersonalizados[$item->id] ?? null))
+            ->filter()
+            ->max();
 
         return $marcacoes
             ->filter(fn (?Carbon $marcadoEm) => $dataBase === null || $marcadoEm === null || $marcadoEm->toDateString() <= Carbon::parse($dataBase)->toDateString())
@@ -408,24 +423,34 @@ class StatusProgressaoService
     {
         $status = $this->statusBloco($jovem, $bloco);
 
-        // Mesma proteção de calcularStatusBloco(): um bloco sem nenhuma
-        // Obrigatória nem Variável (cadastro incompleto) nunca conta como
-        // 100% preenchido só porque não tem nada exigido em nenhum dos dois.
-        if ($status['obrigatorias_necessarias'] === 0 && $status['variaveis_necessarias'] === 0) {
-            return 0.0;
+        if ($status['status'] === 'Concluído') {
+            return 1.0;
         }
 
-        $percentualObrigatorias = $status['obrigatorias_necessarias'] > 0
-            ? min($status['obrigatorias_concluidas'] / $status['obrigatorias_necessarias'], 1)
-            : 1.0;
+        // Cada tipo de ação que o bloco realmente exige vira uma parte da
+        // média. Um tipo que o bloco não tem (ex.: sem nenhuma Obrigatória)
+        // não entra: antes contava 100% de graça e um bloco sem Ação Fixa
+        // aparecia pela metade sem nenhuma ação feita. Sem nenhuma parte
+        // (cadastro incompleto) o bloco nunca conta como preenchido.
+        $partes = [];
 
-        if ($status['variaveis_necessarias'] === 0) {
-            return $percentualObrigatorias;
+        if ($status['obrigatorias_necessarias'] > 0) {
+            $partes[] = min($status['obrigatorias_concluidas'] / $status['obrigatorias_necessarias'], 1);
         }
 
-        $percentualVariaveis = min($status['variaveis_concluidas'] / $status['variaveis_necessarias'], 1);
+        if ($jovem->usaProjetoDeVida()) {
+            // Pioneiro: não há mínimo de Variáveis; a parte é o que ele já
+            // fez sobre o que concluiu mais o que marcou como "quero fazer".
+            $planejadas = $status['variaveis_concluidas'] + $status['planejadas_pendentes'];
 
-        return ($percentualObrigatorias + $percentualVariaveis) / 2;
+            if ($planejadas > 0) {
+                $partes[] = $status['variaveis_concluidas'] / $planejadas;
+            }
+        } elseif ($status['variaveis_necessarias'] > 0) {
+            $partes[] = min($status['variaveis_concluidas'] / $status['variaveis_necessarias'], 1);
+        }
+
+        return $partes === [] ? 0.0 : array_sum($partes) / count($partes);
     }
 
     /**
@@ -701,23 +726,34 @@ class StatusProgressaoService
 
             $detalhes = [];
 
-            $detalhes[] = ($variaveisSatisfeitas || $status['substitutiva_concluida'])
-                ? 'Variáveis/Substitutiva OK'
-                : sprintf(
-                    'Faltam %d Ações Variáveis (tem %d de %d) ou 1 Substitutiva',
-                    max(0, $status['variaveis_necessarias'] - $status['variaveis_concluidas']),
-                    $status['variaveis_concluidas'],
-                    $status['variaveis_necessarias'],
-                );
+            if ($jovem->usaProjetoDeVida()) {
+                // Pioneiro: o jovem define as Variáveis pelo Projeto de Vida.
+                $detalhes[] = match (true) {
+                    $status['planejadas_pendentes'] > 0 => sprintf('Faltam %d ações que o jovem marcou como "quero fazer"', $status['planejadas_pendentes']),
+                    $status['variaveis_concluidas'] === 0 && $status['obrigatorias_concluidas'] === 0 && ! $status['substitutiva_concluida'] => 'Nenhuma ação concluída ainda (o jovem escolhe as variáveis pelo Projeto de Vida)',
+                    default => 'Variáveis OK',
+                };
+            } else {
+                $detalhes[] = ($variaveisSatisfeitas || $status['substitutiva_concluida'])
+                    ? 'Variáveis/Substitutiva OK'
+                    : sprintf(
+                        'Faltam %d Ações Variáveis (tem %d de %d) ou 1 Substitutiva',
+                        max(0, $status['variaveis_necessarias'] - $status['variaveis_concluidas']),
+                        $status['variaveis_concluidas'],
+                        $status['variaveis_necessarias'],
+                    );
+            }
 
-            $detalhes[] = $obrigatoriasSatisfeitas
-                ? 'Obrigatórias OK'
-                : sprintf(
+            $detalhes[] = match (true) {
+                $status['obrigatorias_necessarias'] === 0 => 'Sem ações obrigatórias neste bloco',
+                $obrigatoriasSatisfeitas => 'Obrigatórias OK',
+                default => sprintf(
                     'Faltam %d Ações Obrigatórias (tem %d de %d)',
                     $status['obrigatorias_necessarias'] - $status['obrigatorias_concluidas'],
                     $status['obrigatorias_concluidas'],
                     $status['obrigatorias_necessarias'],
-                );
+                ),
+            };
 
             $itemPendente = fn (ItemNovo $item) => ! $this->creditoService->itemNovoConcluido($jovem, $item);
             $itensVisiveis = $this->itensVisiveisDoBloco($jovem, $bloco);
