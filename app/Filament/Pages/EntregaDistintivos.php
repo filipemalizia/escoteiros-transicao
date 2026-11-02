@@ -5,8 +5,10 @@ namespace App\Filament\Pages;
 use App\Filament\Resources\Jovens\Pages\VerProgresso;
 use App\Models\EntregaDistintivo;
 use App\Models\EntregaEtapa;
+use App\Models\Equipe;
 use App\Models\EspecialidadeDistintivo;
 use App\Models\Jovem;
+use App\Models\Ramo;
 use App\Services\EspecialidadeStatusService;
 use App\Services\EtapaProgressaoService;
 use App\Services\StatusProgressaoService;
@@ -15,6 +17,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use UnitEnum;
 
@@ -60,6 +63,15 @@ class EntregaDistintivos extends Page
     public bool $mostrarEntregues = false;
 
     /**
+     * Filtros da lista: id do Ramo e da Equipe ('' = todos; 'sem' em
+     * `$filtroEquipeId` = jovens sem equipe). Aplicados sobre as conquistas
+     * já calculadas, sem recalcular nada.
+     */
+    public string $filtroRamoId = '';
+
+    public string $filtroEquipeId = '';
+
+    /**
      * Tipo ('especialidade'|'etapa') e "chave" do item cujo modal de edição
      * de compra/entrega está aberto — a chave é o id da especialidade (como
      * string) ou o nome da etapa, dependendo do tipo.
@@ -91,11 +103,13 @@ class EntregaDistintivos extends Page
      * conquista de todos os jovens a cada clique era a causa da lentidão.
      * Só as entregas (2 queries leves) são relidas a cada render.
      *
-     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, primeira_etapa: bool, datas: array<int, array{rotulo: string, data: ?string}>, promessa_realizada: bool, entrega: EntregaDistintivo|EntregaEtapa|null}>
+     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string, ramo_id: int, equipe_id: ?int}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, primeira_etapa: bool, datas: array<int, array{rotulo: string, data: ?string}>, promessa_realizada: bool, entrega: EntregaDistintivo|EntregaEtapa|null}>
      */
     public function getPendencias(): array
     {
         $conquistas = $this->conquistas();
+
+        $conquistas = array_values(array_filter($conquistas, fn (array $conquista) => $this->passaNosFiltros($conquista['jovem'])));
 
         $jovemIds = array_values(array_unique(array_column(array_column($conquistas, 'jovem'), 'id')));
 
@@ -149,7 +163,7 @@ class EntregaDistintivos extends Page
      * por ramo, e `EspecialidadeStatusService` é singleton com cache por
      * requisição (1 query por jovem).
      *
-     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, primeira_etapa: bool, datas: array<int, array{rotulo: string, data: ?string}>}>
+     * @return array<int, array{jovem: array{id: int, nome: string, ramo: string, ramo_id: int, equipe_id: ?int}, origem: string, chave: string, tipo_label: string, titulo: string, nivel_atingido: ?int, primeira_etapa: bool, datas: array<int, array{rotulo: string, data: ?string}>}>
      */
     #[Computed(persist: true)]
     public function conquistas(): array
@@ -184,7 +198,7 @@ class EntregaDistintivos extends Page
         $linhas = [];
 
         foreach ($jovens as $jovem) {
-            $dadosJovem = ['id' => $jovem->id, 'nome' => $jovem->nome, 'ramo' => $jovem->ramoAtual->nome];
+            $dadosJovem = ['id' => $jovem->id, 'nome' => $jovem->nome, 'ramo' => $jovem->ramoAtual->nome, 'ramo_id' => $jovem->ramo_atual_id, 'equipe_id' => $jovem->equipe_id];
 
             foreach ($especialidadesPorRamo[$jovem->ramo_atual_id] ?? [] as $especialidade) {
                 $status = $statusService->statusEspecialidade($jovem, $especialidade);
@@ -227,6 +241,61 @@ class EntregaDistintivos extends Page
         }
 
         return $linhas;
+    }
+
+    /**
+     * @param  array{ramo_id?: ?int, equipe_id?: ?int}  $jovem
+     */
+    private function passaNosFiltros(array $jovem): bool
+    {
+        if ($this->filtroRamoId !== '' && (int) ($jovem['ramo_id'] ?? 0) !== (int) $this->filtroRamoId) {
+            return false;
+        }
+
+        return match ($this->filtroEquipeId) {
+            '' => true,
+            'sem' => ($jovem['equipe_id'] ?? null) === null,
+            default => (int) ($jovem['equipe_id'] ?? 0) === (int) $this->filtroEquipeId,
+        };
+    }
+
+    /**
+     * Ao escolher um Ramo, uma Equipe de outro ramo deixa de fazer sentido.
+     */
+    public function updatedFiltroRamoId(): void
+    {
+        if ($this->filtroRamoId !== '' && ! in_array($this->filtroEquipeId, ['', 'sem'], true)
+            && ! $this->getEquipesParaFiltro()->contains('id', (int) $this->filtroEquipeId)) {
+            $this->filtroEquipeId = '';
+        }
+    }
+
+    /**
+     * Ramos que existem no sistema, pro filtro.
+     *
+     * @return Collection<int, Ramo>
+     */
+    public function getRamosParaFiltro(): Collection
+    {
+        return Ramo::query()->orderBy('nome')->get(['id', 'nome']);
+    }
+
+    /**
+     * Equipes que o usuário pode filtrar (todas, se for admin; só as dele,
+     * se não), limitadas ao Ramo escolhido quando houver.
+     *
+     * @return Collection<int, Equipe>
+     */
+    public function getEquipesParaFiltro(): Collection
+    {
+        return Equipe::query()
+            ->when(
+                ! auth()->user()?->isAdmin(),
+                fn ($query) => $query->whereIn('id', auth()->user()?->equipes()->pluck('equipes.id') ?? [])
+            )
+            ->when($this->filtroRamoId !== '', fn ($query) => $query->where('ramo_id', (int) $this->filtroRamoId))
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'ramo_id']);
     }
 
     public function abrirEdicaoEntrega(string $origem, int $jovemId, string $chave, ?string $compradoEm, ?string $entregueEm): void

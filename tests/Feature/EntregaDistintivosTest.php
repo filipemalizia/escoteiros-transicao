@@ -402,3 +402,83 @@ describe('Promessa pendente', function () {
         Livewire::test(EntregaDistintivos::class)->assertDontSee('Promessa pendente')->assertDontSee('aguardando a Promessa');
     });
 });
+
+describe('Filtros de ramo e equipe', function () {
+    function idsDosJovensNaLista($componente): array
+    {
+        return collect($componente->instance()->getPendencias())->pluck('jovem.id')->unique()->sort()->values()->all();
+    }
+
+    beforeEach(function () {
+        // Cada jovem tem pelo menos a primeira etapa (nasce alcancada), entao aparece na lista.
+        $this->equipeSenior = Equipe::create(['ramo_id' => $this->ramo->id, 'nome' => 'Patrulha Senior']);
+        $this->ramoPioneiro = Ramo::create(['nome' => 'Pioneiro']);
+        $this->equipePioneiro = Equipe::create(['ramo_id' => $this->ramoPioneiro->id, 'nome' => 'Cla Pioneiro']);
+
+        $this->jovem->update(['equipe_id' => $this->equipeSenior->id]);
+        $this->pioneiro = Jovem::create(['nome' => 'Pioneiro de Teste', 'data_nascimento' => '2008-01-01', 'ramo_atual_id' => $this->ramoPioneiro->id, 'equipe_id' => $this->equipePioneiro->id]);
+        $this->semEquipe = Jovem::create(['nome' => 'Sem Equipe', 'data_nascimento' => '2010-02-02', 'ramo_atual_id' => $this->ramo->id]);
+    });
+
+    it('sem filtro mostra todos os jovens', function () {
+        expect(idsDosJovensNaLista(Livewire::test(EntregaDistintivos::class)))
+            ->toBe(collect([$this->jovem->id, $this->pioneiro->id, $this->semEquipe->id])->sort()->values()->all());
+    });
+
+    it('filtra por ramo', function () {
+        $componente = Livewire::test(EntregaDistintivos::class)->set('filtroRamoId', (string) $this->ramoPioneiro->id);
+
+        expect(idsDosJovensNaLista($componente))->toBe([$this->pioneiro->id]);
+    });
+
+    it('filtra por equipe e por jovens sem equipe', function () {
+        $porEquipe = Livewire::test(EntregaDistintivos::class)->set('filtroEquipeId', (string) $this->equipeSenior->id);
+        expect(idsDosJovensNaLista($porEquipe))->toBe([$this->jovem->id]);
+
+        $semEquipe = Livewire::test(EntregaDistintivos::class)->set('filtroEquipeId', 'sem');
+        expect(idsDosJovensNaLista($semEquipe))->toBe([$this->semEquipe->id]);
+    });
+
+    it('combina ramo e equipe', function () {
+        $componente = Livewire::test(EntregaDistintivos::class)
+            ->set('filtroRamoId', (string) $this->ramo->id)
+            ->set('filtroEquipeId', (string) $this->equipePioneiro->id);
+
+        expect(idsDosJovensNaLista($componente))->toBe([]);
+    });
+
+    it('trocar o ramo limpa uma equipe que e de outro ramo', function () {
+        Livewire::test(EntregaDistintivos::class)
+            ->set('filtroEquipeId', (string) $this->equipePioneiro->id)
+            ->set('filtroRamoId', (string) $this->ramo->id)
+            ->assertSet('filtroEquipeId', '');
+    });
+
+    it('o aviso de Promessa pendente conta so os jovens do filtro', function () {
+        Livewire::test(EntregaDistintivos::class)
+            ->set('filtroRamoId', (string) $this->ramoPioneiro->id)
+            ->assertSee('a Promessa de 1 jovem');
+    });
+
+    it('as opcoes de equipe do admin sao todas e as do chefe so as dele', function () {
+        $admin = Livewire::test(EntregaDistintivos::class)->instance()->getEquipesParaFiltro();
+        expect($admin->pluck('id')->all())->toContain($this->equipeSenior->id, $this->equipePioneiro->id);
+
+        $chefe = User::factory()->create();
+        $chefe->equipes()->attach($this->equipeSenior);
+        $this->actingAs($chefe);
+
+        $opcoesDoChefe = Livewire::test(EntregaDistintivos::class)->instance()->getEquipesParaFiltro();
+        expect($opcoesDoChefe->pluck('id')->all())->toBe([$this->equipeSenior->id]);
+    });
+
+    it('filtrar nao recalcula as conquistas', function () {
+        $componente = Livewire::test(EntregaDistintivos::class);
+
+        DB::enableQueryLog();
+        $componente->set('filtroRamoId', (string) $this->ramoPioneiro->id);
+        $consultas = collect(DB::getQueryLog())->pluck('query')->implode("\n");
+
+        expect($consultas)->not->toContain('progresso_especialidade')->and($consultas)->not->toContain('progresso_novo');
+    });
+});
